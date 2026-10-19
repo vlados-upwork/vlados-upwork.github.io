@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive, noimageindex">
+<title>ThreatNote prototype</title>
+<meta name="description" content="Clickable prototype of ThreatNote: from a coverage gap to a published story, built block by block in the inline editor.">
+<link rel="icon" href="../../favicon.ico">
+<link rel="preload" as="image" type="image/avif" imagesrcset="img/03-chrome-956.avif 956w, img/03-chrome-1912.avif 1912w, img/03-chrome-3824.avif 3824w" imagesizes="min(100vw, 151vh)" fetchpriority="high">
+<script>if (/[?&]embed\b/.test(location.search)) document.documentElement.className = 'embed';</script>
+<style>
+  @font-face { font-family: 'SF Pro Display'; font-weight: 400; font-display: swap; src: url(../../fonts/SFProDisplay-Regular.75a6f5d.woff2) format('woff2'); }
+  @font-face { font-family: 'SF Pro Display'; font-weight: 500; font-display: swap; src: url(../../fonts/SFProDisplay-Medium.48749ab.woff2) format('woff2'); }
+  :root { --ink: #0d0d12; --muted: #6b6b7e; --accent: #0d0d12; --bg: #e9e8e5; --panel: #fff; --app: #f7f7f8; --u: 0.5px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 400 15px/1.3 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
+
+  /* the stage is one 1912 x 1266 viewport of the app; --u is one screen pixel in CSS pixels.
+     A screen is the fixed chrome (navigation, header, dialogs) over the story, which scrolls under it. */
+  .stage { position: relative; width: min(100%, calc((100vh - 96px) * 1912 / 1266)); aspect-ratio: 1912 / 1266; border-radius: 0; overflow: hidden; background: var(--app); box-shadow: 0 20px 60px rgba(0, 0, 0, .14), 0 0 0 1px rgba(0, 0, 0, .06); user-select: none; -webkit-tap-highlight-color: transparent; }
+  .scr { position: absolute; inset: 0; background: var(--app); }
+  .docwrap { position: absolute; left: calc(var(--u) * 255); top: 0; width: calc(var(--u) * 1657); height: 100%; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; overscroll-behavior: contain; }
+  .docwrap::-webkit-scrollbar { display: none; }
+  .docwrap.locked { overflow-y: hidden; }
+  .docin { position: relative; padding-top: calc(var(--u) * 143); }
+  .docin img { display: block; width: 100%; height: auto; }
+  .chrome { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+  .tl { position: absolute; left: 0; top: 0; width: 100%; height: 0; overflow: visible; }
+
+  /* sprites: a piece of a layer shown at its own place (or moved) */
+  .spr { position: absolute; background-repeat: no-repeat; will-change: transform, opacity; pointer-events: none; }
+
+  /* hover targets: a sprite of the element itself, so at rest nothing changes */
+  .tg { position: absolute; appearance: none; border: 0; padding: 0; background-color: transparent; background-repeat: no-repeat; cursor: pointer; transition: transform .16s ease, box-shadow .16s ease; border-radius: calc(var(--u) * 8); }
+  .tg::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: transparent; transition: background-color .16s ease; pointer-events: none; }
+  .tg.hover::after { background: rgba(13, 13, 18, .06); }
+  .tg.pri.hover::after { background: rgba(255, 255, 255, .16); }
+  .tg.tile.hover { transform: translateY(calc(var(--u) * -3)); box-shadow: 0 calc(var(--u) * 10) calc(var(--u) * 24) rgba(13, 13, 18, .16); }
+  .tg.tile.hover::after { background: transparent; }
+  .tg.press { transform: scale(.965); transition-duration: .08s; }
+  .tg.row.press { transform: none; }
+  .tg:focus-visible { outline: 3px solid #7132f5; outline-offset: 2px; }
+  .tg.hint { animation: hint .9s ease; }
+  @keyframes hint { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 calc(var(--u) * 4) rgba(113, 50, 245, .45); } }
+
+  /* the demo cursor and its click ripple */
+  .cursor { position: absolute; left: 0; top: 0; width: calc(var(--u) * 40); pointer-events: none; z-index: 5; opacity: 0; transition: opacity .3s; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35)); will-change: transform; }
+  .cursor.on { opacity: 1; }
+  .cursor svg { display: block; width: 100%; height: auto; transition: transform .1s ease; transform-origin: 10% 10%; }
+  .cursor.down svg { transform: scale(.82); }
+  .ripple { position: absolute; width: calc(var(--u) * 70); height: calc(var(--u) * 70); margin: calc(var(--u) * -35) 0 0 calc(var(--u) * -35); border-radius: 50%; background: rgba(13, 13, 18, .22); pointer-events: none; z-index: 4; animation: ripple .5s ease-out forwards; }
+  @keyframes ripple { from { transform: scale(.2); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+
+  .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; background: var(--app); transition: opacity .3s; pointer-events: none; z-index: 6; }
+  .loading.done { opacity: 0; }
+
+  /* controls */
+  .bar { display: flex; align-items: center; gap: 14px; width: min(100%, calc((100vh - 96px) * 1912 / 1266)); min-height: 44px; }
+  .btn-ui { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--panel); color: var(--ink); font: inherit; font-weight: 500; cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+  .btn-ui:hover { background: #f6f6f6; }
+  .btn-ui:focus-visible, .dot:focus-visible { outline: 3px solid #7132f5; outline-offset: 2px; }
+  .btn-ui svg { width: 14px; height: 14px; }
+  .btn-ui--icon { width: 40px; padding: 0; justify-content: center; }
+  .caption { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .caption b { color: var(--ink); font-weight: 500; }
+  .dots { display: flex; gap: 5px; }
+  .dot { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .18); cursor: pointer; }
+  .dot.on { background: var(--accent); }
+  @media (max-width: 900px) { .dots { display: none; } .bar { gap: 8px; } .btn-ui--label span { display: none; } }
+
+  /* ?embed: inside a case study (iframe height = width * 1266 / 1912 + 58 px): no page background, full width */
+  html.embed body { background: transparent; padding: 0; justify-content: flex-start; }
+  html.embed .stage, html.embed .bar { width: 100%; }
+  html.embed .stage { box-shadow: 0 0 0 1px rgba(0, 0, 0, .06); }
+  html.embed .bar { min-height: 44px; height: 44px; }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage" aria-label="ThreatNote prototype" role="region">
+    <div class="cursor" id="cursor" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 2.5l15.5 10.2-6.9 1.3 4 7.6-3.1 1.6-4-7.6L4.6 20.3z" fill="#111" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+    <div class="loading" id="loading">Loading prototype</div>
+  </div>
+  <div class="bar">
+    <button class="btn-ui btn-ui--label" id="play" type="button"></button>
+    <button class="btn-ui btn-ui--icon" id="restart" type="button" aria-label="Start over"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 1 0 1.7-4"/><path d="M2.5 2v3.5H6"/></svg></button>
+    <div class="caption" id="caption" aria-live="polite"></div>
+    <div class="dots" id="dots"></div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+  var W = 1912, VH = 1266, DOCX = 255, DOCY = 143, READ = 1400;
+  var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var EASE = 'cubic-bezier(.4, 0, .2, 1)', OUT = 'cubic-bezier(.16, 1, .3, 1)';
+
+  // Every step of the Figma flow "Story builder" (TreatNote (Copy), page Dashboard, frames TN 01 to TN 21) with its
+  // layers and prototype links, inserted by .build/prototype_threatnote.py
+  var DATA = {"steps":[{"step":3,"name":"Ask ThreatNote","W":1912,"VH":1266,"links":[{"name":"+","label":"","layer":"chrome","rect":[693,1193,729,1229],"to":4}],"chrome":{"img":"03-chrome","ws":[956,1912,3824]}},{"step":4,"name":"+ menu, Create","W":1912,"VH":1266,"links":[{"name":"Menu Item","label":"Story","layer":"chrome","rect":[975,857,1255,908],"to":5}],"chrome":{"img":"04-chrome","ws":[956,1912,3824]}},{"step":5,"name":"Blank story","W":1912,"VH":1266,"links":[{"name":"H.title","label":"Untitled story","layer":"doc","rect":[170,198,1029,260],"to":6}],"doc":{"x":255,"y":143,"w":1657,"h":773,"img":"05-doc","ws":[828,1657,3314]},"bg":"#f7f7f8","chrome":{"img":"05-chrome","ws":[956,1912,3824]}},{"step":6,"name":"Title and summary","W":1912,"VH":1266,"links":[{"name":"H.coverPh","label":"Add cover image","layer":"doc","rect":[1077,48,1487,429],"to":7}],"doc":{"x":255,"y":143,"w":1657,"h":773,"img":"06-doc","ws":[828,1657,3314]},"fresh":[170,155,1029,279],"bg":"#f7f7f8","chrome":{"img":"06-chrome","ws":[956,1912,3824]}},{"step":7,"name":"Cover picker","W":1912,"VH":1266,"links":[{"name":"Button: Cancel","label":"Cancel","layer":"chrome","rect":[1261,950,1341,988],"to":6},{"name":"Tile: APT29 activity map","label":"APT29 activity map","layer":"chrome","rect":[460,405,780,655],"to":8}],"doc":{"x":255,"y":143,"w":1657,"h":773,"img":"06-doc","ws":[828,1657,3314]},"bg":"#f7f7f8","chrome":{"img":"07-chrome","ws":[956,1912,3824]}},{"step":8,"name":"Cover selected","W":1912,"VH":1266,"links":[{"name":"Button: Use image","label":"Use image","layer":"chrome","rect":[1351,951,1452,987],"to":9},{"name":"Button: Cancel","label":"Cancel","layer":"chrome","rect":[1261,950,1341,988],"to":6}],"doc":{"x":255,"y":143,"w":1657,"h":773,"img":"06-doc","ws":[828,1657,3314]},"bg":"#f7f7f8","chrome":{"img":"08-chrome","ws":[956,1912,3824]}},{"step":9,"name":"Cover added","W":1912,"VH":1266,"links":[{"name":"Chip: Text","label":"Aa","layer":"doc","rect":[170,572,248,610],"to":10}],"doc":{"x":255,"y":143,"w":1657,"h":778,"img":"09-doc","ws":[828,1657,3314]},"fresh":[1077,48,1487,429],"bg":"#f7f7f8","chrome":{"img":"09-chrome","ws":[956,1912,3824]}},{"step":10,"name":"Text written","W":1912,"VH":1266,"links":[{"name":"Chip: Indicators","label":"IOC","layer":"doc","rect":[1094,1007,1207,1045],"to":11}],"doc":{"x":255,"y":143,"w":1657,"h":1226,"img":"10-doc","ws":[828,1657,3314]},"fresh":[170,718,1487,894],"bg":"#f7f7f8","chrome":{"img":"09-chrome","ws":[956,1912,3824]}},{"step":11,"name":"Indicator picker","W":1912,"VH":1266,"links":[{"name":"Button: Add 14 indicators","label":"Add 14 indicators","layer":"chrome","rect":[1237,942,1382,978],"to":12},{"name":"Button: Cancel","label":"Cancel","layer":"chrome","rect":[1147,941,1227,979],"to":10}],"doc":{"x":255,"y":143,"w":1657,"h":1226,"img":"11-doc","ws":[828,1657,3314]},"bg":"#f7f7f8","chrome":{"img":"11-chrome","ws":[956,1912,3824]}},{"step":12,"name":"Indicators added","W":1912,"VH":1266,"links":[{"name":"Chip: Image","label":"IMG","layer":"doc","rect":[992,1312,1082,1350],"to":13}],"doc":{"x":255,"y":143,"w":1657,"h":1531,"img":"12-doc","ws":[828,1657,3314]},"fresh":[170,918,1487,1199],"bg":"#f7f7f8","chrome":{"img":"09-chrome","ws":[956,1912,3824]}},{"step":13,"name":"Image picker","W":1912,"VH":1266,"links":[{"name":"Button: Cancel","label":"Cancel","layer":"chrome","rect":[1239,815,1319,853],"to":12},{"name":"Tile: Lookalike sign-in page","label":"Lookalike sign-in page","layer":"chrome","rect":[796,540,1116,790],"to":14}],"doc":{"x":255,"y":143,"w":1657,"h":1533,"img":"13-doc","ws":[828,1657,3314]},"bg":"#f7f7f8","chrome":{"img":"13-chrome","ws":[956,1912,3824]}},{"step":14,"name":"Two images selected","W":1912,"VH":1266,"links":[{"name":"Button: Insert 2 images","label":"Insert 2 images","layer":"chrome","rect":[1318,816,1452,852],"to":15},{"name":"Button: Cancel","label":"Cancel","layer":"chrome","rect":[1228,815,1308,853],"to":12}],"doc":{"x":255,"y":143,"w":1657,"h":1533,"img":"13-doc","ws":[828,1657,3314]},"bg":"#f7f7f8","chrome":{"img":"14-chrome","ws":[956,1912,3824]}},{"step":15,"name":"Images added","W":1912,"VH":1266,"links":[{"name":"Chip: Timeline","label":"TL","layer":"doc","rect":[1219,1858,1323,1896],"to":16}],"doc":{"x":255,"y":143,"w":1657,"h":2077,"img":"15-doc","ws":[828,1657,3314]},"fresh":[170,1225,1487,1745],"bg":"#f7f7f8","chrome":{"img":"09-chrome","ws":[956,1912,3824]}},{"step":16,"name":"Timeline suggestions","W":1912,"VH":1266,"links":[{"name":"Button: Add 2 events","label":"Add 2 events","layer":"chrome","rect":[1194,857,1312,893],"to":17},{"name":"Button: Cancel","label":"Cancel","layer":"chrome","rect":[1104,856,1184,894],"to":15}],"doc":{"x":255,"y":143,"w":1657,"h":2442.5,"img":"16-doc","ws":[828,1657,3314]},"fresh":[170,1847,1487,2011],"bg":"#f7f7f8","chrome":{"img":"16-chrome","ws":[956,1912,3824]}},{"step":17,"name":"Timeline added","W":1912,"VH":1266,"links":[{"name":"Chip: Relationships","label":"REL","layer":"doc","rect":[1335,2515,1470,2553],"to":18}],"doc":{"x":255,"y":143,"w":1657,"h":2734,"img":"17-doc","ws":[828,1657,3314]},"fresh":[170,2051,1487,2402],"bg":"#f7f7f8","chrome":{"img":"09-chrome","ws":[956,1912,3824]}},{"step":18,"name":"Link picker","W":1912,"VH":1266,"links":[{"name":"Button: Link 8","label":"Link 8","layer":"chrome","rect":[1239,890,1312,926],"to":19},{"name":"Button: Cancel","label":"Cancel","layer":"chrome","rect":[1149,889,1229,927],"to":17}],"doc":{"x":255,"y":143,"w":1657,"h":3097.5,"img":"18-doc","ws":[828,1657,3314]},"fresh":[170,2502,1487,2666],"bg":"#f7f7f8","chrome":{"img":"18-chrome","ws":[956,1912,3824]}},{"step":19,"name":"Story built","W":1912,"VH":1266,"links":[{"name":"Button","label":"Publish","layer":"chrome","rect":[1739,86,1844,122],"to":20}],"doc":{"x":255,"y":143,"w":1657,"h":3603,"img":"19-doc","ws":[828,1657,3314]},"fresh":[170,2868,1487,3271],"bg":"#f7f7f8","chrome":{"img":"19-chrome","ws":[956,1912,3824]}},{"step":20,"name":"Publish","W":1912,"VH":1266,"links":[{"name":"Publish story","label":"Publish story","layer":"chrome","rect":[1084,702,1202,740],"to":21},{"name":"Cancel","label":"Cancel","layer":"chrome","rect":[996,701,1076,741],"to":19}],"doc":{"x":255,"y":143,"w":1657,"h":3603,"img":"19-doc","ws":[828,1657,3314]},"bg":"#f7f7f8","chrome":{"img":"20-chrome","ws":[956,1912,3824]}},{"step":21,"name":"Published","W":1912,"VH":1266,"links":[{"name":"Button","label":"Edit","layer":"chrome","rect":[1762,86,1844,122],"to":19}],"doc":{"x":255,"y":143,"w":1657,"h":3439,"img":"21-doc","ws":[828,1657,3314]},"bg":"#f7f7f8","chrome":{"img":"21-chrome","ws":[956,1912,3824]}}]};
+
+  // what each step is about, and the dialogs (the story behind them does not scroll)
+  var TEXT = {
+    1: ['Threat Coverage', 'T1003 is used by 5 of your 6 groups and nothing detects it'],
+    2: ['Threat Coverage', 'The technique opens with who uses it and what covers it'],
+    3: ['Ask ThreatNote', 'Questions in plain words, answers with sources and next steps'],
+    4: ['Ask ThreatNote', 'The + menu: attach, go anywhere, or create'],
+    5: ['Story editor', 'A new story starts blank'],
+    6: ['Story editor', 'Title and summary'],
+    7: ['Story editor', 'A cover from the Library'],
+    8: ['Story editor', 'Selected, ready to use'],
+    9: ['Story editor', 'The cover is in. Now the first block'],
+    10: ['Story editor', 'Overview text, with formatting on the selected block'],
+    11: ['Story editor', 'Indicators from the hunt, checked against the stack'],
+    12: ['Story editor', 'The indicator table lands in the story'],
+    13: ['Story editor', 'Evidence images: pick one or more'],
+    14: ['Story editor', 'Two picked, numbered in the order they will appear'],
+    15: ['Story editor', 'A gallery with captions'],
+    16: ['Story editor', 'ThreatNote suggests timeline events from the hunt'],
+    17: ['Story editor', 'The timeline, from the events that were picked'],
+    18: ['Story editor', 'Links found in the text, indicators and timeline'],
+    19: ['Story editor', 'The story is built. Publish it'],
+    20: ['Publish', 'Who sees it, the sharing level and who gets an email'],
+    21: ['Published', 'The story as stakeholders read it', 3200],
+  };
+  var MODAL = { 7: 1, 8: 1, 11: 1, 13: 1, 14: 1, 16: 1, 18: 1, 20: 1 };
+  var STEPS = DATA.steps.map(function (s) {
+    var t = TEXT[s.step];
+    s.part = t[0]; s.label = t[1]; s.dwell = t[2]; s.modal = !!MODAL[s.step];
+    s.next = s.links.filter(function (l) { return l.to === s.step + 1; })[0];   // the demo path: the link forward
+    return s;
+  });
+  var N = STEPS.length, BY = {};
+  STEPS.forEach(function (s, i) { BY[s.step] = i; });
+  var kindOf = function (l) {
+    if (/^Tile/.test(l.name)) return 'tile';
+    if (l.name === 'Row' || l.name === 'Menu Item') return 'row';
+    if (/^(Button: (Use|Add|Insert|Link)|Publish story)/.test(l.name) || /^(Publish|Edit)$/.test(l.label)) return 'pri';
+    return 'btn';
+  };
+
+  // ---- images ---------------------------------------------------------------------------------------
+  var srcset = function (L) { return L.ws.map(function (w) { return 'img/' + L.img + '-' + w + '.avif ' + w + 'w'; }).join(', '); };
+  var cache = {};
+  function pic(L, sizes) {   // one decoded <img> per layer file, cloned into screens
+    if (!cache[L.img]) {
+      var img = new Image();
+      img.decoding = 'async'; img.sizes = sizes; img.alt = '';
+      cache[L.img] = new Promise(function (res) { img.onload = img.onerror = function () { res(img); }; img.srcset = srcset(L); })
+        .then(function (img) { cache[L.img + ':img'] = img; return img.decode ? Promise.race([img.decode().catch(function () {}), new Promise(function (r) { setTimeout(r, 400); })]).then(function () { return img; }) : img; });
+    }
+    return cache[L.img];
+  }
+  var SIZES_C = 'min(100vw, 151vh)', SIZES_D = 'min(87vw, 131vh)';
+  var ready = [];
+  function load(i) {
+    if (!ready[i]) {
+      var s = STEPS[i];
+      ready[i] = Promise.all([pic(s.chrome, SIZES_C), s.doc ? pic(s.doc, SIZES_D) : null]);
+    }
+    return ready[i];
+  }
+  (function chain(i) { if (i < N) load(i).then(function () { chain(i + 1); }); })(0);
+
+  // ---- machinery ----------------------------------------------------------------------------------
+  var stage = document.getElementById('stage'), cursor = document.getElementById('cursor');
+  var playBtn = document.getElementById('play'), caption = document.getElementById('caption'), dotsEl = document.getElementById('dots');
+  var current = -1, cur = null, playing = !still, busy = false, timer = null, visible = true, mouse = { x: 1500, y: 1000 }, u = 1;
+  var frame = function (fn) { var done = false, go = function () { if (!done) { done = true; fn(performance.now()); } }; requestAnimationFrame(go); setTimeout(go, 50); };
+  var px = function (v) { return 'calc(var(--u) * ' + v + ')'; };
+  var place = function (el, r) { el.style.left = px(r[0]); el.style.top = px(r[1]); el.style.width = px(r[2] - r[0]); el.style.height = px(r[3] - r[1]); };
+  var setU = function () { u = stage.clientWidth / W; stage.style.setProperty('--u', u + 'px'); };
+  var lw = function (s, layer) { return layer === 'doc' ? s.doc.w : W; };
+  var lh = function (s, layer) { return layer === 'doc' ? s.doc.h : VH; };
+  function bgFor(el, s, layer, r) {   // el shows rect r of a layer image
+    var img = cache[s[layer].img + ':img'];
+    el.style.backgroundImage = 'url(' + (img && img.currentSrc || 'img/' + s[layer].img + '-' + s[layer].ws[1] + '.avif') + ')';
+    el.style.backgroundSize = px(lw(s, layer)) + ' ' + px(lh(s, layer));
+    el.style.backgroundPosition = px(-r[0]) + ' ' + px(-r[1]);
+  }
+
+  var dots = STEPS.map(function (s, i) {
+    var d = document.createElement('button');
+    d.type = 'button'; d.className = 'dot'; d.setAttribute('aria-label', 'Step ' + (i + 1) + ': ' + s.label);
+    d.addEventListener('click', function () { pause(); jump(i); });
+    dotsEl.appendChild(d);
+    return d;
+  });
+
+  // a screen: [story (scrolls) + its targets] under [chrome + its targets]
+  function screen(i) {
+    var s = STEPS[i], el = document.createElement('div');
+    el.className = 'scr';
+    var o = { el: el, s: s, i: i };
+    if (s.doc) {
+      var wrap = document.createElement('div'), inner = document.createElement('div');
+      wrap.className = 'docwrap' + (s.modal ? ' locked' : ''); inner.className = 'docin';
+      inner.style.height = px(DOCY + s.doc.h);
+      var dimg = document.createElement('img');
+      dimg.alt = s.part + ': ' + s.label; dimg.sizes = SIZES_D; dimg.srcset = srcset(s.doc); dimg.width = s.doc.w; dimg.height = s.doc.h;
+      inner.appendChild(dimg);
+      var dl = document.createElement('div'); dl.className = 'tl'; dl.style.top = px(DOCY); inner.appendChild(dl);
+      wrap.appendChild(inner); el.appendChild(wrap);
+      o.wrap = wrap; o.dl = dl; o.inner = inner;
+    }
+    var cimg = document.createElement('img');
+    cimg.className = 'chrome'; cimg.alt = s.doc ? '' : s.part + ': ' + s.label; cimg.sizes = SIZES_C; cimg.srcset = srcset(s.chrome);
+    el.appendChild(cimg);
+    var cl = document.createElement('div'); cl.className = 'tl'; el.appendChild(cl);
+    o.cl = cl; o.fx = document.createElement('div'); o.fx.className = 'tl'; el.appendChild(o.fx);
+    s.links.forEach(function (l) {
+      var kind = kindOf(l), b = document.createElement('button');
+      b.type = 'button'; b.className = 'tg ' + kind; place(b, l.rect);
+      b.setAttribute('aria-label', (l.label || l.name).replace(/^(Button|Tile|Chip): /, ''));
+      bgFor(b, s, l.layer, l.rect);
+      if (l === s.next) b.dataset.demo = '1';
+      b.addEventListener('pointerenter', function () { b.classList.add('hover'); });
+      b.addEventListener('pointerleave', function () { b.classList.remove('hover', 'press'); });
+      b.addEventListener('pointerdown', function () { b.classList.add('press'); });
+      b.addEventListener('pointerup', function () { b.classList.remove('press'); });
+      b.addEventListener('click', function (ev) { ev.stopPropagation(); if (busy) return; if (playing) pause(); go(BY[l.to]); });
+      (l.layer === 'doc' ? o.dl : o.cl).appendChild(b);
+      l.el = b;
+    });
+    stage.insertBefore(el, cursor);
+    return o;
+  }
+  // the image elements resolve their currentSrc once loaded: keep one per layer for the sprites
+  function remember(o) {
+    var imgs = o.el.querySelectorAll('img');
+    Array.prototype.forEach.call(imgs, function (img) {
+      var L = img.classList.contains('chrome') ? o.s.chrome : o.s.doc;
+      if (img.complete) cache[L.img + ':img'] = img; else img.addEventListener('load', function () { cache[L.img + ':img'] = img; });
+    });
+  }
+
+  var scrollOf = function (o) { return o && o.wrap ? o.wrap.scrollTop / u : 0; };
+  var maxScroll = function (o) { return o.wrap ? Math.max(0, DOCY + o.s.doc.h - VH) : 0; };
+  function scrollTo(o, y, ms, done) {   // eased scroll of the story, in screen px
+    if (!o.wrap) { if (done) done(); return; }
+    y = Math.max(0, Math.min(maxScroll(o), y));
+    var y0 = scrollOf(o), t0 = performance.now();
+    if (Math.abs(y - y0) < 2 || still) { o.wrap.scrollTop = y * u; if (done) done(); return; }
+    (function step(now) {
+      var p = Math.min(1, (now - t0) / ms), e = p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+      o.wrap.scrollTop = (y0 + (y - y0) * e) * u;
+      if (p < 1) frame(step); else if (done) done();
+    })(t0);
+  }
+  // where a new block should sit: its top a little under the header, or the whole block if it fits
+  var reveal = function (s) { var r = s.fresh; return r[1] - 90 + Math.min(0, VH - DOCY - 90 - (r[3] - r[1]) - 60); };
+
+  function settle(o) {
+    var k = o.i, s = o.s;
+    current = k; cur = o;
+    dots.forEach(function (d, i) { d.classList.toggle('on', i === k); d.setAttribute('aria-current', i === k ? 'step' : 'false'); });
+    caption.innerHTML = '<b>' + (k + 1) + ' / ' + N + ' · ' + s.part + '</b> &nbsp;' + s.label;
+    load((k + 1) % N);
+    clearTimeout(timer);
+    if (playing) timer = setTimeout(demoClick, s.dwell || READ);
+  }
+
+  function jump(k) {
+    clearTimeout(timer);
+    load(k).then(function () {
+      var o = screen(k);
+      remember(o);
+      Array.prototype.forEach.call(stage.querySelectorAll('.scr'), function (e) { if (e !== o.el) e.remove(); });
+      settle(o);
+      var l = document.getElementById('loading');
+      if (l) { l.classList.add('done'); setTimeout(function () { l.remove(); }, 400); }
+    });
+  }
+
+  // A to B: B fades in over A. Between two editor steps the story keeps its scroll (Figma: preserve scroll
+  // position), the block B adds rises into place, then the story scrolls to it (Figma: after delay, scroll to).
+  function go(b) {
+    if (busy || b === undefined || b < 0 || b >= N) return;
+    var A = cur, sa = A.s;
+    busy = true; clearTimeout(timer);
+    load(b).then(function () {
+      var o = screen(b), sb = o.s, anims = [];
+      remember(o);
+      var keep = sa.doc && sb.doc && sb.step !== 21 && !(sa.step === 21);
+      if (keep && o.wrap) o.wrap.scrollTop = Math.min(scrollOf(A), maxScroll(o)) * u;
+      var fresh = keep && sb.fresh && sb.step > sa.step;
+      var dur = still ? 1 : 260;
+      anims.push(o.el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: dur, easing: EASE, fill: 'both' }));
+      if (fresh && !still) {   // the new block: a sprite of it rises in on top
+        var r = sb.fresh, sp = document.createElement('div'), y = DOCY - scrollOf(o) + r[1];
+        sp.className = 'spr'; place(sp, [DOCX + r[0], y, DOCX + r[2], y + r[3] - r[1]]); bgFor(sp, sb, 'doc', r);
+        o.fx.appendChild(sp);
+        anims.push(sp.animate([{ opacity: 0, transform: 'translateY(' + 18 * u + 'px)' }, { opacity: 1, transform: 'none' }], { duration: 480, delay: 120, easing: OUT, fill: 'both' }));
+      }
+      setTimeout(function () {
+        anims[0].cancel();   // ends on its natural state even where animations were paused (a hidden tab)
+        A.el.remove();
+        var finish = function () { o.fx.innerHTML = ''; busy = false; settle(o); };
+        if (fresh) setTimeout(function () { o.fx.innerHTML = ''; scrollTo(o, reveal(sb), 650, finish); }, still ? 0 : 380);
+        else finish();
+      }, still ? 10 : dur);
+    });
+  }
+
+  // ---- the demo cursor ----------------------------------------------------------------------------
+  function screenRect(l) {   // a link's rect on the stage, in screen px
+    var r = l.rect;
+    if (l.layer !== 'doc') return r;
+    var dy = DOCY - scrollOf(cur);
+    return [r[0] + DOCX, r[1] + dy, r[2] + DOCX, r[3] + dy];
+  }
+  function hoverAt(x, y) {
+    cur.s.links.forEach(function (l) {
+      var r = screenRect(l);
+      l.el.classList.toggle('hover', x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]);
+    });
+  }
+  function moveTo(x, y, ms, done) {
+    var x0 = mouse.x, y0 = mouse.y, t0 = performance.now();
+    var cx = (x0 + x) / 2 + (y - y0) * .18, cy = (y0 + y) / 2 - (x - x0) * .18;
+    (function step(now) {
+      var p = Math.min(1, (now - t0) / ms), e = p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+      var bx = (1 - e) * (1 - e) * x0 + 2 * (1 - e) * e * cx + e * e * x, by = (1 - e) * (1 - e) * y0 + 2 * (1 - e) * e * cy + e * e * y;
+      mouse = { x: bx, y: by };
+      cursor.style.transform = 'translate(' + bx * u + 'px,' + by * u + 'px)';
+      hoverAt(bx, by);
+      if (p < 1) frame(step); else done();
+    })(t0);
+  }
+  function demoClick() {
+    if (!playing || busy) return;
+    if (!visible || document.hidden) { timer = setTimeout(demoClick, 500); return; }
+    var l = cur.s.next;
+    if (!l) { jump(0); return; }   // the end: start over
+    var r = screenRect(l);
+    if (l.layer === 'doc' && (r[1] < DOCY + 20 || r[3] > VH - 40)) {   // below the fold: scroll it into view first
+      scrollTo(cur, l.rect[1] - (VH - DOCY) / 2, 700, function () { timer = setTimeout(demoClick, 250); });
+      return;
+    }
+    var a = [(r[0] + r[2]) / 2, (r[1] + r[3]) / 2];
+    cursor.classList.add('on');
+    moveTo(a[0], a[1], Math.max(450, Math.min(1100, Math.hypot(a[0] - mouse.x, a[1] - mouse.y) * 1.1)), function () {
+      if (!playing) return;
+      timer = setTimeout(function () {
+        cursor.classList.add('down'); l.el.classList.add('press');
+        var rp = document.createElement('div');
+        rp.className = 'ripple'; rp.style.left = px(a[0]); rp.style.top = px(a[1]);
+        stage.appendChild(rp); setTimeout(function () { rp.remove(); }, 600);
+        timer = setTimeout(function () { cursor.classList.remove('down'); l.el.classList.remove('press'); go(BY[l.to]); }, 140);
+      }, 220);
+    });
+  }
+
+  function setPlayLabel() {
+    playBtn.innerHTML = playing
+      ? '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg><span>Pause demo</span>'
+      : '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.2v11.6c0 .6.7 1 1.2.7l9-5.8c.5-.3.5-1 0-1.3l-9-5.9C4.7 1.2 4 1.6 4 2.2z"/></svg><span>Play demo</span>';
+    playBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
+  }
+  function pause() {
+    playing = false; cursor.classList.remove('on', 'down'); setPlayLabel();
+    if (cur) cur.s.links.forEach(function (l) { l.el.classList.remove('hover', 'press'); });
+    if (!busy) clearTimeout(timer);
+  }
+  function play() { playing = true; setPlayLabel(); if (!busy) { clearTimeout(timer); timer = setTimeout(demoClick, 300); } }
+
+  playBtn.addEventListener('click', function () { playing ? pause() : play(); });
+  document.getElementById('restart').addEventListener('click', function () { mouse = { x: 1500, y: 1000 }; cursor.style.transform = 'translate(' + 1500 * u + 'px,' + 1000 * u + 'px)'; jump(0); });
+  stage.addEventListener('click', function () {
+    if (playing) { pause(); return; }
+    var h = cur && cur.el.querySelector('[data-demo]');
+    if (h) { h.classList.remove('hint'); void h.offsetWidth; h.classList.add('hint'); }
+  });
+  stage.addEventListener('wheel', function () { if (playing) pause(); }, { passive: true });
+  document.addEventListener('keydown', function (e) {
+    if (e.target.closest && e.target.closest('button')) return;
+    if (e.key === 'ArrowRight') { pause(); if (cur && cur.s.next) go(BY[cur.s.next.to]); else jump(0); }
+    else if (e.key === 'ArrowLeft') { pause(); jump((current - 1 + N) % N); }
+    else if (e.key === ' ') { e.preventDefault(); playing ? pause() : play(); }
+  });
+  window.addEventListener('resize', function () {
+    var y = cur ? scrollOf(cur) : 0;
+    setU(); if (cur && cur.wrap) cur.wrap.scrollTop = y * u;
+    cursor.style.transform = 'translate(' + mouse.x * u + 'px,' + mouse.y * u + 'px)';
+  });
+  if ('IntersectionObserver' in window) new IntersectionObserver(function (e) { visible = e[0].isIntersecting; }).observe(stage);
+
+  setU();
+  setPlayLabel();
+  cursor.style.transform = 'translate(' + 1500 * u + 'px,' + 1000 * u + 'px)';
+  jump(0);
+})();
+</script>
+</body>
+</html>

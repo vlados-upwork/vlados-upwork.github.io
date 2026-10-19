@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive, noimageindex">
+<title>Agent Builder prototype</title>
+<meta name="description" content="Clickable prototype of the Scaled Cognition Agent Builder: define an agent, add rules and generate functions with APT-1.">
+<link rel="icon" href="../../favicon.ico">
+<link rel="preload" as="image" type="image/avif" imagesrcset="img/01-define-empty-960.avif 960w, img/01-define-empty-1920.avif 1920w, img/01-define-empty-3840.avif 3840w" imagesizes="min(100vw, 160vh)" fetchpriority="high">
+<script>if (/[?&]embed\b/.test(location.search)) document.documentElement.className = 'embed';</script>
+<style>
+  @font-face { font-family: 'SF Pro Display'; font-weight: 400; font-display: swap; src: url(../../fonts/SFProDisplay-Regular.75a6f5d.woff2) format('woff2'); }
+  @font-face { font-family: 'SF Pro Display'; font-weight: 500; font-display: swap; src: url(../../fonts/SFProDisplay-Medium.48749ab.woff2) format('woff2'); }
+  :root { --ink: #111; --muted: #6b6b6b; --blue: #1657d9; --bg: #e9e8e5; --panel: #fff; --u: 0.5px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 400 15px/1.3 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
+
+  /* the stage keeps the screens' 1920 x 1200 ratio; --u is one screen pixel in CSS pixels */
+  .stage { position: relative; width: min(100%, calc((100vh - 96px) * 1.6)); aspect-ratio: 1920 / 1200; border-radius: calc(var(--u) * 8.5);   /* Agent Lifecycle is rounded by design: the screens' 8.5 px (user, 2026-10-19) */ overflow: hidden; background: #f4f2f1; box-shadow: 0 20px 60px rgba(0, 0, 0, .14), 0 0 0 1px rgba(0, 0, 0, .06); user-select: none; -webkit-tap-highlight-color: transparent; }
+  .screen { position: absolute; inset: 0; width: 100%; height: 100%; visibility: hidden; pointer-events: none; }
+  .screen.on { visibility: visible; }
+  .layer { position: absolute; inset: 0; pointer-events: none; }
+
+  /* sprites: a piece of a screen shown at its own place (or moved); patches: the app's dotted canvas */
+  .spr { position: absolute; background-repeat: no-repeat; background-size: calc(var(--u) * 1920) calc(var(--u) * 1200); will-change: transform, opacity; }
+  .patch { position: absolute; background: #f4f2f1 url(img/dots.png); background-size: calc(var(--u) * 24) calc(var(--u) * 24); }
+  .fill { position: absolute; }
+
+  /* hover targets: a sprite of the element itself, so at rest nothing changes */
+  .tg { position: absolute; appearance: none; border: 0; padding: 0; background-color: transparent; background-repeat: no-repeat; background-size: calc(var(--u) * 1920) calc(var(--u) * 1200); pointer-events: auto; cursor: pointer; transition: transform .16s ease, box-shadow .2s ease; }
+  .tg::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: transparent; transition: background-color .16s ease; pointer-events: none; }
+  .tg.btn.hover::after, .tg.icon.hover::after { background: rgba(0, 0, 0, .055); }
+  .tg.row.hover::after { background: rgba(0, 0, 0, .025); }
+  .tg.pri.hover::after { background: rgba(255, 255, 255, .14); }
+  /* cards lift their face; the target itself shows the canvas the card sits on, so nothing doubles underneath */
+  .tg.card { background: #f4f2f1 url(img/dots.png); background-size: calc(var(--u) * 24) calc(var(--u) * 24); transition: none; }
+  .tg.card .face { position: absolute; inset: 0; border-radius: inherit; background-repeat: no-repeat; background-size: calc(var(--u) * 1920) calc(var(--u) * 1200); transition: transform .18s ease, box-shadow .2s ease; }
+  .tg.card.hover .face { transform: translateY(calc(var(--u) * -4)); box-shadow: 0 calc(var(--u) * 14) calc(var(--u) * 34) rgba(20, 20, 40, .10); }
+  .tg.card.press .face { transform: translateY(calc(var(--u) * -1)) scale(.99); transition-duration: .08s; }
+  .tg.card.press { transform: none; }
+  .tg.link.hover { transform: translateX(calc(var(--u) * 3)); }
+  .tg.press { transform: scale(.965); transition-duration: .08s; }
+  .tg:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+  .tg.hint { animation: hint .9s ease; }
+  @keyframes hint { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 calc(var(--u) * 4) rgba(22, 87, 217, .55); } }
+  @media (hover: hover) { .tg:hover::after { } }
+
+  /* ambient effects while a screen waits on APT-1 */
+  .bar-fill { position: absolute; border-radius: 3px; background: linear-gradient(90deg, #6d4cff, #a48bff); transform-origin: left center; }
+  .sheen { position: absolute; overflow: hidden; }
+  .sheen::after { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; left: -40%; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .85), transparent); animation: sheen 1.3s ease-in-out infinite; }
+  @keyframes sheen { to { left: 110%; } }
+  .pulse { position: absolute; border-radius: 50%; border: calc(var(--u) * 2) solid rgba(0, 105, 255, .55); }
+  .confetti { position: absolute; border-radius: 1px; will-change: transform, opacity; }
+
+  /* the demo cursor and its click ripple */
+  .cursor { position: absolute; left: 0; top: 0; width: calc(var(--u) * 40); pointer-events: none; z-index: 5; opacity: 0; transition: opacity .3s; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35)); will-change: transform; }
+  .cursor.on { opacity: 1; }
+  .cursor svg { display: block; width: 100%; height: auto; transition: transform .1s ease; transform-origin: 10% 10%; }
+  .cursor.down svg { transform: scale(.82); }
+  .ripple { position: absolute; width: calc(var(--u) * 70); height: calc(var(--u) * 70); margin: calc(var(--u) * -35) 0 0 calc(var(--u) * -35); border-radius: 50%; background: rgba(22, 87, 217, .3); pointer-events: none; z-index: 4; animation: ripple .5s ease-out forwards; }
+  @keyframes ripple { from { transform: scale(.2); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+
+  .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; background: #f4f2f1; transition: opacity .3s; pointer-events: none; z-index: 6; }
+  .loading.done { opacity: 0; }
+
+  /* controls */
+  .bar { display: flex; align-items: center; gap: 14px; width: min(100%, calc((100vh - 96px) * 1.6)); min-height: 44px; }
+  .btn-ui { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--panel); color: var(--ink); font: inherit; font-weight: 500; cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+  .btn-ui:hover { background: #f6f6f6; }
+  .btn-ui:focus-visible, .dot:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+  .btn-ui svg { width: 14px; height: 14px; }
+  .btn-ui--icon { width: 40px; padding: 0; justify-content: center; }
+  .caption { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .caption b { color: var(--ink); font-weight: 500; }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .18); cursor: pointer; }
+  .dot.on { background: var(--blue); }
+  @media (max-width: 700px) { .dots { display: none; } .bar { gap: 8px; } .btn-ui--label span { display: none; } }
+
+  /* ?embed: inside a case study (iframe height = width / 1.6 + 58 px): no page background, full width */
+  html.embed body { background: transparent; padding: 0; justify-content: flex-start; }
+  html.embed .stage, html.embed .bar { width: 100%; }
+  html.embed .stage { box-shadow: 0 0 0 1px rgba(0, 0, 0, .06); }
+  html.embed .bar { min-height: 44px; height: 44px; }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage" aria-label="Agent Builder prototype" role="region">
+    <div class="layer" id="amb"></div>
+    <div class="layer" id="fx"></div>
+    <div class="layer" id="targets"></div>
+    <div class="cursor" id="cursor" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 2.5l15.5 10.2-6.9 1.3 4 7.6-3.1 1.6-4-7.6L4.6 20.3z" fill="#111" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+    <div class="loading" id="loading">Loading prototype</div>
+  </div>
+  <div class="bar">
+    <button class="btn-ui btn-ui--label" id="play" type="button"></button>
+    <button class="btn-ui btn-ui--icon" id="restart" type="button" aria-label="Start over"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 1 0 1.7-4"/><path d="M2.5 2v3.5H6"/></svg></button>
+    <div class="caption" id="caption" aria-live="polite"></div>
+    <div class="dots" id="dots"></div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+  var W = 1920, H = 1200, READ = 1200;
+  var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var EASE = 'cubic-bezier(.4, 0, .2, 1)', OUT = 'cubic-bezier(.16, 1, .3, 1)', POP = 'cubic-bezier(.2, 1.35, .4, 1)';
+
+  // ---- hover targets shared by the screens (rects in screen pixels) --------------------------------
+  // kinds: btn (light button), pri (blue button), icon, card (lifts), row (list row), link (nudges)
+  var R = function (kind, x0, y0, x1, y1, r) { return { kind: kind, r: [x0, y0, x1, y1], rad: r }; };
+  var rail = [100, 184, 310, 352, 394, 436, 478, 520, 562, 604].map(function (y) { return R('icon', 32, y - 18, 68, y + 18, 8); })
+    .concat([R('icon', 36, 1069, 64, 1097, 14), R('icon', 36, 1097, 64, 1125, 14)]);
+  var railA = rail.concat([R('icon', 32, 208, 68, 244, 8), R('icon', 32, 250, 68, 286, 8)]);
+  var chat = function (dy) {
+    return [R('icon', 1780, 42 + dy, 1806, 68 + dy, 6), R('icon', 1816, 42 + dy, 1842, 68 + dy, 6), R('icon', 1852, 42 + dy, 1878, 68 + dy, 6),
+      R('btn', 1533, 82 + dy, 1664, 106 + dy, 12), R('pri', 1840, 331 + dy, 1868, 359 + dy, 14), R('icon', 1563, 181 + dy, 1583, 199 + dy, 4), R('icon', 1588, 181 + dy, 1608, 199 + dy, 4)];
+  };
+  var chatBottom = [R('btn', 1567, 1038, 1720, 1064, 13), R('btn', 1727, 1038, 1872, 1064, 13), R('icon', 1546, 1126, 1566, 1146, 4), R('icon', 1576, 1126, 1596, 1146, 4), R('icon', 1816, 1126, 1836, 1146, 4), R('pri', 1842, 1122, 1870, 1150, 14)];
+  var headA = [R('btn', 422, 36, 662, 72, 8), R('icon', 839, 38, 871, 70, 8), R('icon', 882, 38, 914, 70, 8), R('icon', 924, 38, 956, 70, 8), R('icon', 966, 38, 998, 70, 8),
+    R('btn', 1019, 38, 1127, 70, 16), R('pri', 1137, 38, 1214, 70, 16)];
+  var stepsA = [[380, 460], [492, 604], [636, 728], [766, 852], [890, 968], [1006, 1092], [1130, 1206]].map(function (x) { return R('btn', x[0], 94, x[1], 126, 16); });
+  var headB = [R('btn', 450, 36, 690, 72, 8), R('btn', 710, 40, 808, 68, 14), R('btn', 812, 40, 896, 68, 14), R('btn', 1302, 38, 1392, 70, 16), R('pri', 1405, 38, 1480, 70, 16)];
+  var stepsB = [[410, 480], [562, 672], [744, 842], [914, 1002], [1080, 1162], [1236, 1324], [1398, 1478]].map(function (x) { return R('btn', x[0], 94, x[1], 126, 16); });
+  var lib = function (n) { return [182, 252, 323, 393, 464].slice(0, n).map(function (y) { return R('row', 109, y, 355, y + 62, 10); }).concat([R('btn', 109, 1125, 355, 1159, 17)]); };
+  var templates = function (dy) {   // the four example cards on Define (dy = how far the page pushed them down)
+    return [R('card', 416, 436 + dy, 790, 600 + dy, 12), R('card', 801, 436 + dy, 1176, 600 + dy, 12), R('card', 416, 612 + dy, 790, 776 + dy, 12), R('card', 801, 612 + dy, 1176, 776 + dy, 12)];
+  };
+  var A = railA.concat(headA, stepsA, chat(0), chatBottom);
+  var B = rail.concat(headB, stepsB);
+  // Defend / Evaluate / Deploy
+  var chromeA = railA.concat(headA, stepsA, [R('link', 428, 1145, 524, 1167)]);
+  var chatHead = function (dy) {
+    return [R('icon', 1780, 42 + dy, 1806, 68 + dy, 6), R('icon', 1816, 42 + dy, 1842, 68 + dy, 6), R('icon', 1852, 42 + dy, 1878, 68 + dy, 6), R('btn', 1533, 82 + dy, 1664, 106 + dy, 12),
+      R('icon', 1546, 1126, 1566, 1146, 4), R('icon', 1576, 1126, 1596, 1146, 4), R('icon', 1816, 1126, 1836, 1146, 4), R('pri', 1842, 1122, 1870, 1150, 14)];
+  };
+  var defendRows = [R('row', 416, 248, 792, 340, 12), R('row', 800, 248, 1176, 340, 12), R('row', 416, 352, 792, 440, 12), R('row', 800, 352, 1176, 440, 12),
+    R('row', 432, 544, 1160, 616, 10), R('row', 432, 624, 1160, 700, 10), R('row', 432, 708, 1160, 780, 10), R('row', 432, 788, 1160, 884, 10), R('btn', 1081, 480, 1150, 504, 8)];
+  var chromeC = rail.concat([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(function (n) { var y = 182 + (n - 1) * 93; return R('row', 109, y, 395, y + 87, 10); }),
+    [R('btn', 108, 126, 160, 150, 8), R('btn', 168, 126, 264, 150, 8), R('btn', 274, 126, 360, 150, 8), R('btn', 730, 32, 966, 72, 8), R('btn', 998, 40, 1100, 66, 8), R('pri', 1134, 36, 1240, 68, 16),
+      R('icon', 271, 1134, 299, 1160, 8), R('icon', 335, 1134, 363, 1160, 8), R('icon', 367, 1134, 395, 1160, 8), R('icon', 442, 1141, 462, 1161, 4), R('icon', 516, 1141, 536, 1161, 4)]);
+  var tiles = [R('row', 1532, 228, 1704, 300, 10), R('row', 1708, 228, 1880, 300, 10), R('row', 1532, 308, 1704, 376, 10), R('row', 1708, 308, 1880, 376, 10)];
+  var deployRows = [300, 376, 448, 524, 596, 672, 744].map(function (y) { return R('row', 432, y, 1160, y + 68, 10); })
+    .concat([R('btn', 992, 868, 1062, 898, 13), R('btn', 1066, 868, 1156, 898, 13), R('icon', 1135, 270, 1155, 290, 6), R('icon', 1855, 566, 1875, 588, 6)]);
+
+  // ---- screens in flow order -------------------------------------------------------------------
+  // go: the hotspot (clicking it moves on), aim: where the demo clicks, auto: moves on by itself (ms)
+  var STEPS = [
+    { id: '01-define-empty', part: 'Define', label: 'Start from the Banking support template', go: R('card', 801, 436, 1176, 600, 12), aim: [858, 576],
+      t: A.concat(templates(0).filter(function (c, i) { return i !== 1; }), [R('pri', 1010, 337, 1159, 361, 12), R('link', 428, 1145, 512, 1167)]), alt: 'Define step: an empty agent description and four example templates' },
+    { id: '02-define-template', part: 'Define', label: 'Improve the description with APT-1', go: R('btn', 1007, 354, 1162, 388, 17),
+      t: A.concat(templates(22), [R('link', 428, 1145, 512, 1167), R('pri', 972, 1137, 1175, 1176, 20)]), alt: 'The description filled in from the Banking support template' },
+    { id: '03-define-rewriting', part: 'Define', label: 'APT-1 rewrites the definition', auto: 2300, t: A.concat(templates(66)), alt: 'APT-1 rewriting the definition, adding scope, verification and escalation' },
+    { id: '04-define-rewritten', part: 'Define', label: 'Review the three changes and accept them', go: R('pri', 432, 580, 567, 610, 15),
+      t: A.concat(templates(246), [R('btn', 575, 583, 616, 607, 8), R('btn', 1010, 380, 1159, 405, 12)]), alt: 'The rewritten definition with a summary of three changes' },
+    { id: '05-define-saved', part: 'Define', label: 'Saved. Continue to Instructions', go: R('pri', 972, 1137, 1175, 1176, 20), dwell: 1400,
+      t: A.concat(templates(44), [R('link', 428, 1145, 512, 1167)]), alt: 'Definition saved with the APT-1 changes accepted' },
+    { id: '06-instructions', part: 'Instructions', label: 'Ask APT-1 to suggest rules', go: R('btn', 536, 679, 741, 718, 20),
+      t: A.concat([R('btn', 1078, 268, 1152, 292, 8), R('btn', 1078, 554, 1152, 578, 8), R('row', 434, 306, 1158, 396, 10), R('row', 434, 408, 1158, 498, 10),
+        R('icon', 1121, 320, 1143, 342, 6), R('icon', 1121, 422, 1143, 444, 6), R('btn', 416, 679, 530, 718, 20), R('link', 428, 1145, 512, 1167), R('pri', 985, 1137, 1175, 1176, 20)]), alt: 'Instructions step: rule groups for general conduct and scheduling' },
+    { id: '07-instructions-suggested', part: 'Instructions', label: 'Add a rule found in simulated conversations', go: R('btn', 1004, 738, 1079, 772, 17),
+      t: A.concat([R('btn', 1084, 742, 1142, 768, 8), R('btn', 1008, 850, 1076, 878, 14), R('btn', 1084, 852, 1142, 876, 8), R('btn', 416, 971, 530, 1008, 18), R('btn', 540, 971, 738, 1008, 18),
+        R('row', 434, 306, 1158, 396, 10), R('row', 434, 408, 1158, 498, 10), R('pri', 985, 1137, 1175, 1176, 20)]), alt: 'Two rules suggested by APT-1, found in simulations and a red-team attack' },
+    { id: '08-instructions-added', part: 'Instructions', label: 'Rule added. Continue to Functions', go: R('pri', 985, 1137, 1175, 1176, 20), dwell: 1400,
+      t: A.concat([R('row', 434, 306, 1158, 396, 10), R('row', 434, 408, 1158, 498, 10), R('row', 434, 510, 1158, 580, 10), R('btn', 1008, 823, 1076, 851, 14), R('btn', 416, 944, 530, 981, 18), R('btn', 540, 944, 738, 981, 18)]),
+      alt: 'The suggested rule added to General conduct and included in evaluation' },
+    { id: '09-functions-templates', part: 'Functions', label: 'Generate functions from the Basic Booking template', go: R('card', 572, 640, 814, 842, 12), aim: [632, 816],
+      t: B.concat(chat(0), chatBottom, [R('card', 826, 642, 1062, 840, 12), R('card', 1077, 642, 1313, 840, 12), R('btn', 172, 323, 291, 350, 13), R('btn', 109, 1125, 355, 1159, 17),
+        R('btn', 620, 1043, 748, 1069, 13), R('btn', 756, 1043, 889, 1069, 13), R('btn', 897, 1043, 1089, 1069, 13), R('btn', 1097, 1043, 1255, 1069, 13), R('pri', 1259, 1133, 1291, 1165, 16)]),
+      alt: 'Functions step: generate functions and types from a template' },
+    { id: '10-functions-generating', part: 'Functions', label: 'APT-1 generates functions and types', auto: 2500,
+      t: B.concat(lib(4), chat(624), chatBottom, [R('pri', 1533, 575, 1879, 615, 20), R('btn', 1533, 490, 1651, 518, 14), R('btn', 1662, 490, 1750, 518, 14)]), alt: 'APT-1 generating functions and types from example JSON' },
+    { id: '11-functions-graph', part: 'Functions', label: 'Add the missing function APT-1 found', go: R('btn', 1134, 632, 1234, 665, 17),
+      t: B.concat(lib(4), chat(624), chatBottom, [R('pri', 1533, 575, 1879, 615, 20), R('btn', 1240, 636, 1300, 661, 8), R('card', 506, 478, 762, 666, 12), R('card', 814, 478, 1074, 650, 12),
+        R('card', 506, 778, 762, 958, 12), R('card', 814, 778, 1074, 974, 12), R('card', 1126, 778, 1382, 974, 12), R('card', 814, 186, 1074, 374, 12), R('icon', 403, 1141, 423, 1161, 4), R('icon', 472, 1141, 492, 1161, 4)]),
+      alt: 'Graph of generated functions and data types with one suggested function' },
+    { id: '12-functions-added', part: 'Functions', label: 'Five functions. On to Defend', go: R('btn', 1080, 94, 1162, 126, 16), dwell: 1600,
+      t: B.concat(lib(5), chat(624), chatBottom, [R('pri', 1533, 575, 1879, 615, 20), R('card', 506, 478, 762, 666, 12), R('card', 814, 478, 1074, 650, 12), R('card', 1126, 478, 1382, 666, 12),
+        R('card', 506, 778, 762, 958, 12), R('card', 814, 778, 1074, 974, 12), R('card', 1126, 778, 1382, 974, 12)]),
+      alt: 'get_cancellation_quote added, five functions in the library' },
+    { id: '13-defend-protection', part: 'Defend', label: 'Try to break the agent with another attack', go: R('btn', 1565, 1036, 1692, 1066, 15),
+      t: chromeA.concat(chatHead(0), defendRows, [R('btn', 1697, 1038, 1762, 1064, 13), R('btn', 1008, 906, 1075, 933, 14), R('btn', 1084, 908, 1140, 930, 8)]),
+      alt: 'Defend step: protections on, a prompt injection in Live Chat answered safely' },
+    { id: '14-defend-blocked', part: 'Defend', label: 'Blocked and logged. Run the evaluation', go: R('pri', 1032, 1137, 1176, 1176, 20),
+      t: chromeA.concat(chatHead(100), defendRows, [R('icon', 1864, 34, 1888, 58, 6), R('btn', 1567, 1038, 1690, 1064, 13), R('btn', 1697, 1038, 1762, 1064, 13)]),
+      alt: 'Adversarial input blocked and logged to evaluations' },
+    { id: '15-evaluate-generating', part: 'Evaluate', label: 'APT-1 generates test cases from the agent spec', auto: 2300, t: chromeC, alt: 'Evaluation running: test case generation' },
+    { id: '16-evaluate-simulating', part: 'Evaluate', label: 'Virtual customers talk to the agent at scale', auto: 2300, t: chromeC, alt: 'Evaluation running: large scale simulation with GenAPI mocks' },
+    { id: '17-evaluate-scorecard', part: 'Evaluate', label: 'Approved at 90.63%. Continue to Deploy', go: R('pri', 1100, 998, 1270, 1036, 19),
+      t: chromeC.concat([R('card', 644, 264, 1284, 444, 12), R('card', 644, 504, 1284, 700, 12), R('card', 644, 762, 1284, 958, 12), R('pri', 1533, 526, 1879, 566, 20)], tiles),
+      alt: 'Scorecard ready: 90.63% pass rate, evaluation approved' },
+    { id: '18-deploy-checks', part: 'Deploy', label: 'Six of seven readiness checks pass. Deploy the agent', go: R('pri', 1040, 1137, 1176, 1176, 20),
+      t: chromeA.concat(deployRows, tiles), alt: 'Deploy step: readiness checks, deployment target and agent.yaml' },
+    { id: '19-deploy-celebration', part: 'Deploy', label: 'Deployed to Staging. Promote it to Production', go: R('pri', 996, 700, 1162, 733, 17),
+      t: [R('btn', 866, 700, 986, 733, 17), R('icon', 1138, 590, 1160, 612, 6)], alt: 'Agent deployed to Staging dialog', extra: '19-deploy-celebration-backdrop' },
+    { id: '20-deploy-live', part: 'Deploy', label: 'Live in production. Back to start to replay', go: R('pri', 1044, 1137, 1176, 1176, 20), dwell: 2600,
+      t: chromeA.concat(deployRows, tiles), alt: 'Hotel Reservation Management is live in production' },
+  ];
+
+  // ---- transitions: only the parts that change move (k = from-screen, k + 1 = to-screen) ----------
+  var TRANS = [
+    function (x) {   // 01 -> 02: template fills the description (typed), cards make room, Banking gets selected
+      x.patch([408, 150, 1184, 830]);
+      x.spr(x.B, [416, 156, 1176, 404]);
+      var c1 = x.fill([446, 284, 1152, 309], '#fff'), c2 = x.fill([446, 309, 1152, 334], '#fff');
+      x.a(c1, [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], 620, 120, 'steps(30, end)', 'right center');
+      x.a(c2, [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], 560, 760, 'steps(26, end)', 'right center');
+      x.a(x.spr(x.A, [408, 396, 1184, 800]), [{ transform: x.ty(0) }, { transform: x.ty(22) }], 260, 0, OUT);
+      x.a(x.spr(x.B, [796, 452, 1180, 628]), [{ opacity: 0, transform: 'scale(.985)' }, { opacity: 1, transform: 'none' }], 280, 220, POP);
+      return 1400;
+    },
+    function (x) {   // 02 -> 03: the card opens a progress row, cards slide down
+      x.patch([408, 150, 1184, 860]);
+      x.spr(x.A, [416, 156, 1176, 404]);
+      x.a(x.spr(x.B, [416, 156, 1176, 448]), [{ opacity: 0, clipPath: x.inset(0, 44) }, { opacity: 1, clipPath: x.inset(0, 0) }], 320, 40, OUT);
+      x.a(x.spr(x.A, [408, 418, 1184, 804]), [{ transform: x.ty(0) }, { transform: x.ty(44) }], 320, 40, OUT);
+      return 420;
+    },
+    function (x) {   // 03 -> 04: new definition, the summary of changes unfolds, cards make room
+      x.patch([408, 150, 1184, 1040]);
+      var dA = x.spr(x.A, [416, 156, 1176, 448]), dB = x.spr(x.B, [416, 156, 1176, 424]);
+      x.a(dA, [{ opacity: 1 }, { opacity: 0 }], 260, 0, EASE);
+      x.a(dB, [{ opacity: 0 }, { opacity: 1 }], 300, 0, EASE);
+      x.a(x.spr(x.A, [408, 462, 1184, 848]), [{ transform: x.ty(0) }, { transform: x.ty(180) }], 440, 120, OUT);
+      x.a(x.spr(x.B, [412, 440, 1180, 632]), [{ opacity: 0, clipPath: x.inset(0, 192) }, { opacity: 1, clipPath: x.inset(0, 0) }], 480, 220, OUT);
+      return 760;
+    },
+    function (x) {   // 04 -> 05: changes accepted, the summary folds away, toast
+      x.patch([408, 436, 1184, 1036]);
+      x.a(x.spr(x.A, [412, 440, 1180, 632]), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.98)' }], 220, 0, EASE);
+      x.a(x.spr(x.A, [408, 642, 1184, 1028]), [{ transform: x.ty(0) }, { transform: x.ty(-202) }], 440, 100, OUT);
+      x.a(x.spr(x.B, [592, 1104, 944, 1176]), [{ opacity: 0, transform: x.ty(46) }, { opacity: 1, transform: 'none' }], 420, 360, POP);
+      return 820;
+    },
+    function (x) {   // 05 -> 06: next step: content swaps, stepper and rail follow, toast leaves
+      x.patch([408, 146, 1184, 1040]);
+      x.a(x.spr(x.A, [408, 146, 1184, 840]), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: x.ty(-16) }], 220, 0, EASE);
+      x.a(x.spr(x.B, [408, 146, 1184, 740]), [{ opacity: 0, transform: x.ty(18) }, { opacity: 1, transform: 'none' }], 380, 160, OUT);
+      [[372, 88, 1222, 132], [28, 88, 72, 630]].forEach(function (r) { x.a(x.spr(x.B, r), [{ opacity: 0 }, { opacity: 1 }], 260, 80, EASE); });
+      x.patch([588, 1100, 950, 1182]);
+      x.a(x.spr(x.A, [592, 1104, 944, 1176]), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: x.ty(40) }], 240, 0, EASE);
+      x.a(x.spr(x.B, [420, 1130, 1180, 1182]), [{ opacity: 0 }, { opacity: 1 }], 260, 120, EASE);
+      return 560;
+    },
+    function (x) {   // 06 -> 07: APT-1 suggestions appear, the buttons below make room
+      x.patch([408, 664, 1184, 1024]);
+      x.a(x.spr(x.A, [412, 668, 748, 724]), [{ transform: x.ty(0) }, { transform: x.ty(292) }], 420, 0, OUT);
+      x.a(x.spr(x.B, [412, 676, 1180, 960]), [{ opacity: 0, transform: x.ty(14), clipPath: x.inset(0, 200) }, { opacity: 1, transform: 'none', clipPath: x.inset(0, 0) }], 520, 160, OUT);
+      x.a(x.spr(x.B, [412, 960, 748, 1016]), [{ opacity: 0 }, { opacity: 1 }], 160, 380, EASE);
+      return 700;
+    },
+    function (x) {   // 07 -> 08: the suggested rule flies up into General conduct, everything below follows
+      var d = 506 - 736;
+      x.patch([408, 486, 1184, 1024]);
+      x.a(x.spr(x.A, [412, 486, 1180, 520]), [{ opacity: 1 }, { opacity: 0 }], 200, 0, EASE);
+      var g = x.spr(x.B, [412, 486, 1180, 604]), hide = x.fill([436, 508, 1156, 580], '#fff');
+      x.a(g, [{ opacity: 0 }, { opacity: 1 }], 260, 60, EASE);
+      x.a(hide, [{ opacity: 0 }, { opacity: 1 }], 260, 60, EASE);
+      x.a(x.spr(x.A, [412, 532, 1180, 664]), [{ transform: x.ty(0) }, { transform: x.ty(82) }], 420, 60, OUT);
+      x.a(x.spr(x.A, [412, 680, 1180, 960]), [{ opacity: 1, transform: x.ty(0) }, { opacity: 0, transform: x.ty(82) }], 300, 60, EASE);
+      x.a(x.spr(x.B, [412, 762, 1180, 932]), [{ opacity: 0 }, { opacity: 1 }], 260, 300, EASE);
+      x.a(x.spr(x.A, [412, 964, 748, 1016]), [{ transform: x.ty(0) }, { transform: x.ty(-27) }], 420, 120, OUT);
+      x.a(x.spr(x.A, [432, 734, 1160, 830]), [{ opacity: 1, transform: x.ty(0) }, { opacity: 0, transform: x.ty(d) }], 460, 0, OUT);
+      x.a(x.spr(x.B, [432, 506, 1160, 582], [432, 736]), [{ opacity: 0, transform: x.ty(0) }, { opacity: 1, transform: x.ty(d) }], 460, 0, OUT);
+      x.patch([556, 1100, 980, 1182]);
+      x.spr(x.A, [420, 1130, 1180, 1182]);
+      x.a(x.spr(x.B, [560, 1104, 976, 1176]), [{ opacity: 0, transform: x.ty(46) }, { opacity: 1, transform: 'none' }], 420, 380, POP);
+      return 820;
+    },
+    function (x) {   // 08 -> 09: into Functions: the library slides in, the rest changes under it
+      x.a(x.spr(x.B, [0, 0, 1920, 1200]), [{ opacity: 0 }, { opacity: 1 }], 320, 80, EASE);
+      x.a(x.spr(x.B, [560, 330, 1320, 860]), [{ opacity: 0, transform: x.ty(16) }, { opacity: 1, transform: 'none' }], 420, 160, OUT);
+      x.a(x.spr(x.B, [88, 20, 376, 1180]), [{ opacity: 0, transform: x.tx(-300) }, { opacity: 1, transform: 'none' }], 440, 60, OUT);
+      return 600;
+    },
+    function (x) {   // 09 -> 10: Generate panel drops in and pushes Live Chat down, functions fill the library
+      x.patch([1508, 20, 1900, 1182]);
+      x.a(x.spr(x.A, [1512, 20, 1900, 1180]), [{ transform: x.ty(0) }, { transform: x.ty(624) }], 520, 0, OUT);
+      x.a(x.spr(x.B, [1512, 640, 1900, 1180]), [{ opacity: 0 }, { opacity: 1 }], 200, 420, EASE);
+      x.a(x.spr(x.B, [1512, 20, 1900, 636]), [{ opacity: 0, transform: x.ty(-30) }, { opacity: 1, transform: 'none' }], 480, 120, OUT);
+      x.patch([380, 140, 1500, 1190]);
+      x.a(x.spr(x.A, [380, 140, 1500, 1190]), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.98)' }], 260, 0, EASE);
+      x.a(x.spr(x.B, [380, 140, 1500, 1190]), [{ opacity: 0 }, { opacity: 1 }], 360, 200, EASE);
+      x.fill([104, 172, 360, 462], '#fff');
+      [[109, 180, 355, 246], [109, 250, 355, 318], [109, 320, 355, 388], [109, 390, 355, 458]].forEach(function (r, i) {
+        x.a(x.spr(x.B, r), [{ opacity: 0, transform: x.tx(-14) }, { opacity: 1, transform: 'none' }], 320, 260 + i * 80, OUT);
+      });
+      [[100, 124, 320, 156], [100, 1090, 260, 1116]].forEach(function (r) { x.a(x.spr(x.B, r), [{ opacity: 0 }, { opacity: 1 }], 200, 260, EASE); });
+      return 880;
+    },
+    function (x) {   // 10 -> 11: the graph builds: source, connectors, functions, then data types
+      x.patch([496, 150, 1396, 1000]);
+      x.a(x.spr(x.B, [808, 160, 1080, 380]), [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'none' }], 300, 0, POP);
+      x.a(x.spr(x.B, [496, 376, 1396, 452]), [{ clipPath: x.inset(0, 76) }, { clipPath: x.inset(0, 0) }], 300, 220, EASE);
+      [[500, 452, 768, 668], [808, 452, 1080, 652], [1120, 452, 1388, 680]].forEach(function (r, i) {
+        x.a(x.spr(x.B, r), [{ opacity: 0, transform: x.ty(14) + ' scale(.97)' }, { opacity: 1, transform: 'none' }], 340, 440 + i * 100, POP);
+      });
+      x.a(x.spr(x.B, [496, 668, 1396, 752]), [{ clipPath: x.inset(0, 84) }, { clipPath: x.inset(0, 0) }], 300, 780, EASE);
+      [[500, 752, 768, 960], [808, 752, 1080, 980], [1120, 752, 1388, 980]].forEach(function (r, i) {
+        x.a(x.spr(x.B, r), [{ opacity: 0, transform: x.ty(14) + ' scale(.97)' }, { opacity: 1, transform: 'none' }], 340, 960 + i * 100, POP);
+      });
+      return 1400;
+    },
+    function (x) {   // 11 -> 12: the suggestion becomes a function, the library gets it, toast
+      x.a(x.spr(x.A, [1120, 448, 1388, 684]), [{ opacity: 1 }, { opacity: 0 }], 200, 0, EASE);
+      x.a(x.spr(x.B, [1120, 448, 1388, 684]), [{ opacity: 0, transform: 'scale(.96)' }, { opacity: 1, transform: 'scale(1.025)', offset: .6 }, { opacity: 1, transform: 'none' }], 460, 40, EASE);
+      x.a(x.spr(x.B, [104, 460, 360, 540]), [{ opacity: 0, transform: x.tx(-14) }, { opacity: 1, transform: 'none' }], 360, 260, OUT);
+      [[100, 124, 320, 156], [100, 1090, 260, 1116]].forEach(function (r) { x.a(x.spr(x.B, r), [{ opacity: 0 }, { opacity: 1 }], 200, 260, EASE); });
+      x.a(x.spr(x.B, [784, 1104, 1136, 1176]), [{ opacity: 0, transform: x.ty(46) }, { opacity: 1, transform: 'none' }], 420, 420, POP);
+      return 860;
+    },
+    function (x) {   // 12 -> 13: to Defend: the library slides away, the protections rise in
+      x.page([408, 146, 1184, 990]);
+      x.a(x.spr(x.A, [88, 20, 376, 1180]), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: x.tx(-300) }], 360, 0, EASE);
+      [[412, 152, 1180, 236], [412, 244, 1180, 444], [412, 456, 1180, 988]].forEach(function (r, i) { x.rise(x.spr(x.B, r), 160 + i * 90); });
+      return 760;
+    },
+    function (x) {   // 13 -> 14: the attack is blocked: an alert drops in and pushes Live Chat down
+      x.patch([1508, 20, 1900, 1182]);
+      x.a(x.spr(x.A, [1512, 20, 1900, 1180]), [{ transform: x.ty(0) }, { transform: x.ty(100) }], 420, 60, OUT);
+      x.a(x.spr(x.B, [1512, 120, 1900, 1180]), [{ opacity: 0 }, { opacity: 1 }], 160, 460, EASE);
+      x.a(x.spr(x.B, [1512, 20, 1900, 112]), [{ opacity: 0, transform: x.ty(-28) }, { opacity: 1, transform: 'none' }], 460, 80, POP);
+      return 640;
+    },
+    function (x) {   // 14 -> 15: to Evaluations: the list slides in, the pipeline builds top to bottom
+      x.page([630, 96, 1300, 1000], [84, 16, 420, 1184]);
+      x.a(x.spr(x.B, [88, 20, 416, 1180]), [{ opacity: 0, transform: x.tx(-320) }, { opacity: 1, transform: 'none' }], 460, 60, OUT);
+      [[640, 100, 1290, 210], [640, 236, 1290, 450], [640, 476, 1290, 708], [640, 734, 1290, 964]].forEach(function (r, i) { x.rise(x.spr(x.B, r), 160 + i * 90); });
+      return 820;
+    },
+    function (x) {   // 15 -> 16: step 1 done, step 2 starts
+      x.a(x.spr(x.B, [640, 240, 1290, 450]), [{ opacity: 0 }, { opacity: 1 }], 280, 0, EASE);
+      x.a(x.spr(x.B, [640, 480, 1290, 708]), [{ opacity: 0, transform: 'scale(.985)' }, { opacity: 1, transform: 'none' }], 420, 200, POP);
+      return 640;
+    },
+    function (x) {   // 16 -> 17: scorecard: step 3 lands, the panel comes alive, the bar fills, approval banner
+      x.a(x.spr(x.B, [640, 480, 1290, 708]), [{ opacity: 0 }, { opacity: 1 }], 280, 0, EASE);
+      x.a(x.spr(x.B, [640, 736, 1290, 964]), [{ opacity: 0, transform: 'scale(.985)' }, { opacity: 1, transform: 'none' }], 420, 160, POP);
+      x.a(x.spr(x.B, [1180, 146, 1280, 190]), [{ opacity: 0 }, { opacity: 1 }], 240, 300, EASE);
+      var card = x.spr(x.B, [1512, 20, 1900, 590]), track = x.fill([1546, 195, 1867, 206], 'rgb(230, 227, 222)');
+      x.a(card, [{ opacity: 0 }, { opacity: 1 }], 380, 340, EASE);
+      x.a(track, [{ opacity: 0 }, { opacity: 1 }], 380, 340, EASE);
+      x.a(x.spr(x.B, [1546, 195, 1867, 206]), [{ clipPath: x.clip(0, 321, 0, 0) }, { clipPath: x.clip(0, 0, 0, 0) }], 900, 620, OUT);
+      [[1532, 228, 1704, 300], [1708, 228, 1880, 300], [1532, 308, 1704, 376], [1708, 308, 1880, 376]].forEach(function (r, i) {
+        x.a(x.spr(x.B, r), [{ opacity: 0, transform: 'scale(.94)' }, { opacity: 1, transform: 'none' }], 320, 520 + i * 70, POP);
+      });
+      x.patch([636, 972, 1296, 1064]);
+      x.a(x.spr(x.B, [640, 976, 1290, 1058]), [{ opacity: 0, transform: x.ty(26) }, { opacity: 1, transform: 'none' }], 440, 760, POP);
+      return 1560;
+    },
+    function (x) {   // 17 -> 18: to Deploy: the list leaves, readiness checks rise, agent.yaml slides up
+      x.page([408, 146, 1184, 1016], [1512, 538, 1900, 1182]);
+      x.a(x.spr(x.A, [88, 20, 416, 1180]), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: x.tx(-320) }], 360, 0, EASE);
+      [[412, 152, 1180, 236], [412, 244, 1180, 836], [412, 844, 1180, 1012]].forEach(function (r, i) { x.rise(x.spr(x.B, r), 160 + i * 90); });
+      x.a(x.spr(x.B, [1512, 540, 1900, 1180]), [{ opacity: 0, transform: x.ty(40) }, { opacity: 1, transform: 'none' }], 460, 280, OUT);
+      return 760;
+    },
+    function (x) {   // 18 -> 19: deploy: the page dims, the badge and the dialog pop up
+      x.a(x.sprUrl(x.extra(x.B), [0, 0, 1920, 1200]), [{ opacity: 0 }, { opacity: 1 }], 300, 0, EASE);
+      x.a(x.spr(x.B, [856, 376, 1064, 564]), [{ opacity: 0, transform: 'scale(.5)' }, { opacity: 1, transform: 'none' }], 520, 160, POP);
+      x.a(x.spr(x.B, [736, 566, 1184, 752]), [{ opacity: 0, transform: x.ty(22) + ' scale(.96)' }, { opacity: 1, transform: 'none' }], 440, 280, POP);
+      return 760;
+    },
+    function (x) {   // 19 -> 20: promoted: the dialog closes, the page comes back live, toast
+      x.sprUrl(x.extra(x.A), [736, 376, 1184, 752]);   // the dim backdrop under the dialog while it closes
+      x.a(x.spr(x.A, [736, 376, 1184, 752]), [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], 220, 0, EASE);
+      x.a(x.spr(x.B, [0, 0, 1920, 1200]), [{ opacity: 0 }, { opacity: 1 }], 360, 160, EASE);
+      x.patch([532, 1100, 1010, 1168]);
+      x.a(x.spr(x.B, [536, 1104, 1004, 1164]), [{ opacity: 0, transform: x.ty(46) }, { opacity: 1, transform: 'none' }], 420, 480, POP);
+      return 900;
+    },
+    function (x) {   // 20 -> 01: back to the start
+      x.page([408, 146, 1184, 990]);
+      [[412, 152, 1180, 404], [412, 396, 1180, 800]].forEach(function (r, i) { x.rise(x.spr(x.B, r), 160 + i * 90); });
+      return 620;
+    },
+  ];
+
+  // ---- ambient effects while a screen waits ------------------------------------------------------
+  var AMBIENT = {
+    '03-define-rewriting': function (x) {
+      x.a(x.fill([433, 385, 1159, 389], null, 'bar-fill'), [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], 2200, 0, 'cubic-bezier(.3, .1, .3, 1)');
+      x.fill([452, 356, 940, 378], null, 'sheen');
+      x.fill([1062, 404, 1156, 426], null, 'sheen');
+    },
+    '10-functions-generating': function (x) {
+      x.fill([748, 586, 1140, 626], null, 'sheen');
+    },
+    '15-evaluate-generating': function (x) {
+      x.fill([1206, 155, 1270, 177], null, 'sheen');
+      x.fill([1208, 405, 1270, 427], null, 'sheen');
+    },
+    '16-evaluate-simulating': function (x) {
+      x.fill([1206, 155, 1270, 177], null, 'sheen');
+      x.fill([1208, 663, 1270, 685], null, 'sheen');
+    },
+    '19-deploy-celebration': function (x) {
+      // the icon in the badge keeps turning, a ring pulses out of it, and a burst of confetti
+      var disc = x.spr(x.A, [922, 442, 998, 518]);
+      disc.style.borderRadius = '50%';
+      disc.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: 1100, iterations: Infinity, easing: 'linear' });
+      var ring = x.fill([900, 420, 1020, 540], null, 'pulse');
+      ring.animate([{ transform: 'scale(.9)', opacity: .7 }, { transform: 'scale(1.7)', opacity: 0 }], { duration: 1400, iterations: Infinity, easing: 'ease-out' });
+      var colors = ['#0069ff', '#7c5cff', '#22c55e', '#ffc83d', '#ff5c8a', '#00c2ff'];
+      for (var i = 0; i < 70; i++) {
+        var p = x.fill([956, 476, 966 + (i % 3) * 3, 482], colors[i % colors.length], 'confetti');
+        var ang = Math.random() * Math.PI * 2, dist = 220 + Math.random() * 380, dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist * .75 - 120;
+        p.animate([
+          { transform: 'translate(0, 0) rotate(0deg)', opacity: 1 },
+          { transform: 'translate(' + dx * x.u + 'px,' + dy * x.u + 'px) rotate(' + (Math.random() * 540 - 270) + 'deg)', opacity: 1, offset: .55 },
+          { transform: 'translate(' + dx * 1.15 * x.u + 'px,' + (dy + 260) * x.u + 'px) rotate(' + (Math.random() * 720 - 360) + 'deg)', opacity: 0 },
+        ], { duration: 1500 + Math.random() * 700, delay: 120 + Math.random() * 160, easing: 'cubic-bezier(.15, .7, .3, 1)', fill: 'both' });
+      }
+      x.spr(x.A, [740, 570, 1180, 748]);   // the dialog stays in front of the confetti
+    },
+  };
+
+  // ---- machinery ----------------------------------------------------------------------------------
+  var stage = document.getElementById('stage'), fx = document.getElementById('fx'), amb = document.getElementById('amb'), tgs = document.getElementById('targets');
+  var cursor = document.getElementById('cursor'), playBtn = document.getElementById('play'), caption = document.getElementById('caption'), dotsEl = document.getElementById('dots');
+  var current = -1, playing = !still, busy = false, timer = null, visible = true, cur = { x: 1500, y: 1000 }, u = 1;
+  // next animation frame, or a timer when frames are paused (hidden tab), whichever comes first
+  var frame = function (fn) {
+    var done = false, go = function () { if (!done) { done = true; fn(performance.now()); } };
+    requestAnimationFrame(go); setTimeout(go, 50);
+  };
+  var setU = function () { u = stage.clientWidth / W; stage.style.setProperty('--u', u + 'px'); };
+  setU();
+  var px = function (v) { return 'calc(var(--u) * ' + v + ')'; };
+  var place = function (el, r) { el.style.left = px(r[0]); el.style.top = px(r[1]); el.style.width = px(r[2] - r[0]); el.style.height = px(r[3] - r[1]); };
+
+  var imgs = STEPS.map(function (s) {
+    var img = document.createElement('img');
+    img.className = 'screen'; img.alt = s.alt; img.decoding = 'async'; img.width = W; img.height = H;
+    img.sizes = 'min(100vw, 160vh)';
+    img.dataset.srcset = 'img/' + s.id + '-960.avif 960w, img/' + s.id + '-1920.avif 1920w, img/' + s.id + '-3840.avif 3840w';
+    stage.insertBefore(img, amb);
+    return img;
+  });
+  var src = function (k) { return imgs[k].currentSrc || ('img/' + STEPS[k].id + '-1920.avif'); };
+  var dots = STEPS.map(function (s, i) {
+    var d = document.createElement('button');
+    d.type = 'button'; d.className = 'dot'; d.setAttribute('aria-label', 'Screen ' + (i + 1) + ': ' + s.label);
+    d.addEventListener('click', function () { pause(); jump(i); });
+    dotsEl.appendChild(d);
+    return d;
+  });
+
+  // first screen right away, then the rest one by one in flow order
+  var ready = STEPS.map(function () { return null; });
+  function load(i) {
+    if (!ready[i]) {
+      var img = imgs[i];
+      ready[i] = new Promise(function (res) { img.onload = img.onerror = res; img.srcset = img.dataset.srcset; })
+        .then(function () {   // a screen's extra image (the deploy dialog's backdrop), same size as the screen
+          if (STEPS[i].extra) return new Promise(function (res) { var x = new Image(); x.onload = x.onerror = res; x.src = src(i).replace(STEPS[i].id + '-', STEPS[i].extra + '-'); });
+        })
+        .then(function () {   // decoded before it is shown; decode() can wait forever in a hidden tab, so not longer than 400 ms
+          return img.decode ? Promise.race([img.decode().catch(function () {}), new Promise(function (r) { setTimeout(r, 400); })]) : null;
+        });
+    }
+    return ready[i];
+  }
+  (function chain(i) { if (i < STEPS.length) load(i).then(function () { chain(i + 1); }); })(0);
+
+  // builder handed to transitions and ambient effects
+  function builder(layer, a, b, anims) {
+    return {
+      A: a, B: b, u: u,
+      ty: function (v) { return 'translateY(' + v * u + 'px)'; },
+      tx: function (v) { return 'translateX(' + v * u + 'px)'; },
+      inset: function (top, bottom) { return 'inset(' + top * u + 'px 0 ' + bottom * u + 'px 0)'; },
+      patch: function (r) { var e = document.createElement('div'); e.className = 'patch'; place(e, r); e.style.backgroundPosition = px(-r[0]) + ' ' + px(-r[1]); layer.appendChild(e); return e; },
+      fill: function (r, color, cls) { var e = document.createElement('div'); e.className = cls || 'fill'; place(e, r); if (color) e.style.background = color; layer.appendChild(e); return e; },
+      spr: function (k, r, at) {
+        var e = document.createElement('div'), p = at || r;
+        e.className = 'spr'; place(e, [p[0], p[1], p[0] + r[2] - r[0], p[1] + r[3] - r[1]]);
+        e.style.backgroundImage = 'url(' + src(k) + ')'; e.style.backgroundPosition = px(-r[0]) + ' ' + px(-r[1]);
+        layer.appendChild(e); return e;
+      },
+      a: function (el, frames, dur, delay, easing, origin) {
+        if (origin) el.style.transformOrigin = origin;
+        anims.push(el.animate(frames, { duration: still ? 1 : dur, delay: still ? 0 : (delay || 0), easing: easing || EASE, fill: 'both' }));
+      },
+      clip: function (t, r, b, l) { return 'inset(' + t * u + 'px ' + r * u + 'px ' + b * u + 'px ' + l * u + 'px)'; },
+      extra: function (k) { return src(k).replace(STEPS[k].id + '-', STEPS[k].extra + '-'); },
+      sprUrl: function (url, r) {
+        var e = document.createElement('div');
+        e.className = 'spr'; place(e, r);
+        e.style.backgroundImage = 'url(' + url + ')'; e.style.backgroundPosition = px(-r[0]) + ' ' + px(-r[1]);
+        layer.appendChild(e); return e;
+      },
+      // a new page: the next screen fades in, with canvas over the areas whose content rises in separately
+      page: function () {
+        var self = this, els = [this.spr(b, [0, 0, 1920, 1200])];
+        Array.prototype.forEach.call(arguments, function (r) { els.push(self.patch(r)); });
+        els.forEach(function (e) { self.a(e, [{ opacity: 0 }, { opacity: 1 }], 300, 60, EASE); });
+      },
+      rise: function (el, delay) { this.a(el, [{ opacity: 0, transform: this.ty(18) }, { opacity: 1, transform: 'none' }], 420, delay, OUT); },
+    };
+  }
+
+  function showBase(k) { imgs.forEach(function (img, i) { img.classList.toggle('on', i === k); }); }
+
+  function buildTargets(k) {
+    tgs.innerHTML = '';
+    var s = STEPS[k], list = (s.go ? [s.go] : []).concat(s.t || []);
+    list.forEach(function (t, n) {
+      var e = document.createElement(n === 0 && s.go ? 'button' : 'div');
+      // a card lifts as a whole: 2 px of canvas around it, so no sliver of its border stays behind
+      if (t.kind === 'card') t = { kind: t.kind, rad: (t.rad || 6) + 2, r: [t.r[0] - 2, t.r[1] - 2, t.r[2] + 2, t.r[3] + 2] };
+      e.className = 'tg ' + t.kind; place(e, t.r);
+      e.style.borderRadius = px(t.rad || 6);
+      if (t.kind === 'card') {
+        var face = document.createElement('div');
+        face.className = 'face';
+        face.style.backgroundImage = 'url(' + src(k) + ')'; face.style.backgroundPosition = px(-t.r[0]) + ' ' + px(-t.r[1]);
+        e.style.backgroundPosition = px(-t.r[0]) + ' ' + px(-t.r[1]);   // the canvas dots, aligned with the page
+        e.appendChild(face);
+      } else {
+        e.style.backgroundImage = 'url(' + src(k) + ')'; e.style.backgroundPosition = px(-t.r[0]) + ' ' + px(-t.r[1]);
+      }
+      if (n === 0 && s.go) { e.type = 'button'; e.setAttribute('aria-label', s.label); e.style.border = '0'; e.style.padding = '0'; e.dataset.go = '1'; }
+      e.addEventListener('pointerenter', function () { e.classList.add('hover'); });
+      e.addEventListener('pointerleave', function () { e.classList.remove('hover', 'press'); });
+      e.addEventListener('pointerdown', function () { e.classList.add('press'); });
+      e.addEventListener('pointerup', function () { e.classList.remove('press'); });
+      e.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        if (busy) return;
+        if (playing) pause();
+        if (e.dataset.go) advance(); else hint();
+      });
+      tgs.appendChild(e);
+    });
+  }
+  function hint() {
+    var h = tgs.querySelector('[data-go]');
+    if (h) { h.classList.remove('hint'); void h.offsetWidth; h.classList.add('hint'); }
+  }
+
+  function settle(k) {   // a screen is now fully shown: targets, caption, ambient effects, what happens next
+    current = k;
+    showBase(k);
+    frame(function () { fx.innerHTML = ''; });
+    amb.innerHTML = '';
+    var s = STEPS[k];
+    buildTargets(k);
+    dots.forEach(function (d, i) { d.classList.toggle('on', i === k); d.setAttribute('aria-current', i === k ? 'step' : 'false'); });
+    caption.innerHTML = '<b>' + (k + 1) + ' / ' + STEPS.length + ' · ' + s.part + '</b> &nbsp;' + s.label;
+    if (AMBIENT[s.id] && !still) AMBIENT[s.id](builder(amb, k, k, []));
+    load((k + 1) % STEPS.length);
+    clearTimeout(timer);
+    if (s.auto) timer = setTimeout(advance, s.auto);
+    else if (playing) timer = setTimeout(demoClick, s.dwell || READ);
+  }
+
+  function jump(k) {   // no transition (dots, restart)
+    clearTimeout(timer); fx.innerHTML = '';
+    load(k).then(function () {
+      settle(k);
+      var l = document.getElementById('loading');
+      if (l) { l.classList.add('done'); setTimeout(function () { l.remove(); }, 400); }
+    });
+  }
+
+  function advance() {
+    if (busy) return;
+    var a = current, b = (current + 1) % STEPS.length;
+    busy = true; clearTimeout(timer);
+    tgs.innerHTML = ''; amb.innerHTML = '';
+    Promise.all([load(a), load(b)]).then(function () {
+      var anims = [];
+      fx.innerHTML = '';
+      var dur = TRANS[a](builder(fx, a, b, anims));
+      setTimeout(function () { busy = false; settle(b); }, still ? 10 : dur);
+    });
+  }
+
+  // ---- the demo cursor: glides along a gentle curve, hovering what it passes over ----------------
+  function hoverAt(x, y) {
+    Array.prototype.forEach.call(tgs.children, function (e) {
+      var l = e.offsetLeft / u, t = e.offsetTop / u, inside = x >= l && x <= l + e.offsetWidth / u && y >= t && y <= t + e.offsetHeight / u;
+      e.classList.toggle('hover', inside);
+    });
+  }
+  function moveTo(x, y, ms, done) {
+    var x0 = cur.x, y0 = cur.y, t0 = performance.now();
+    var cx = (x0 + x) / 2 + (y - y0) * .18, cy = (y0 + y) / 2 - (x - x0) * .18;   // control point: a slight arc
+    (function step(now) {
+      var p = Math.min(1, (now - t0) / ms), e = p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+      var bx = (1 - e) * (1 - e) * x0 + 2 * (1 - e) * e * cx + e * e * x, by = (1 - e) * (1 - e) * y0 + 2 * (1 - e) * e * cy + e * e * y;
+      cur = { x: bx, y: by };
+      cursor.style.transform = 'translate(' + bx * u + 'px,' + by * u + 'px)';
+      hoverAt(bx, by);
+      if (p < 1) frame(step); else done();
+    })(t0);
+  }
+  function demoClick() {
+    if (!playing || busy) return;
+    if (!visible || document.hidden) { timer = setTimeout(demoClick, 500); return; }
+    var s = STEPS[current], g = s.go.r, a = s.aim || [(g[0] + g[2]) / 2, (g[1] + g[3]) / 2];
+    cursor.classList.add('on');
+    var d = Math.hypot(a[0] - cur.x, a[1] - cur.y);
+    moveTo(a[0], a[1], Math.max(450, Math.min(1100, d * 1.1)), function () {
+      if (!playing) return;
+      timer = setTimeout(function () {
+        var go = tgs.querySelector('[data-go]');
+        cursor.classList.add('down'); if (go) go.classList.add('press');
+        var r = document.createElement('div');
+        r.className = 'ripple'; r.style.left = px(a[0]); r.style.top = px(a[1]);
+        stage.appendChild(r); setTimeout(function () { r.remove(); }, 600);
+        timer = setTimeout(function () { cursor.classList.remove('down'); if (go) go.classList.remove('press'); advance(); }, 140);
+      }, 220);
+    });
+  }
+
+  function setPlayLabel() {
+    playBtn.innerHTML = playing
+      ? '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg><span>Pause demo</span>'
+      : '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.2v11.6c0 .6.7 1 1.2.7l9-5.8c.5-.3.5-1 0-1.3l-9-5.9C4.7 1.2 4 1.6 4 2.2z"/></svg><span>Play demo</span>';
+    playBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
+  }
+  function pause() {
+    playing = false; cursor.classList.remove('on', 'down'); setPlayLabel();
+    Array.prototype.forEach.call(tgs.children, function (e) { e.classList.remove('hover', 'press'); });
+    if (!busy && !(STEPS[current] && STEPS[current].auto)) clearTimeout(timer);
+  }
+  function play() { playing = true; setPlayLabel(); if (!busy && !STEPS[current].auto) { clearTimeout(timer); timer = setTimeout(demoClick, 300); } }
+
+  playBtn.addEventListener('click', function () { playing ? pause() : play(); });
+  document.getElementById('restart').addEventListener('click', function () { cur = { x: 1500, y: 1000 }; cursor.style.transform = 'translate(' + 1500 * u + 'px,' + 1000 * u + 'px)'; jump(0); });
+  stage.addEventListener('click', function () { if (playing) { pause(); return; } hint(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.target.closest && e.target.closest('button')) return;
+    if (e.key === 'ArrowRight') { pause(); advance(); }
+    else if (e.key === 'ArrowLeft') { pause(); jump((current - 1 + STEPS.length) % STEPS.length); }
+    else if (e.key === ' ') { e.preventDefault(); playing ? pause() : play(); }
+  });
+  window.addEventListener('resize', function () { setU(); cursor.style.transform = 'translate(' + cur.x * u + 'px,' + cur.y * u + 'px)'; });
+  if ('IntersectionObserver' in window) new IntersectionObserver(function (e) { visible = e[0].isIntersecting; }).observe(stage);
+
+  setPlayLabel();
+  cursor.style.transform = 'translate(' + 1500 * u + 'px,' + 1000 * u + 'px)';
+  jump(0);
+})();
+</script>
+</body>
+</html>

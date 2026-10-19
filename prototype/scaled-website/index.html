@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive, noimageindex">
+<title>Scaled Cognition website prototype</title>
+<meta name="description" content="Clickable prototype of the Scaled Cognition website built in Webflow: dropdown menus, industry tabs that switch in place, the APT-1, platform and industry pages, and the CMS driven Resources and Careers pages.">
+<link rel="icon" href="../../favicon.ico">
+<script>if (/[?&]embed\b/.test(location.search)) document.documentElement.className = 'embed';</script>
+<style>
+  @font-face { font-family: 'SF Pro Display'; font-weight: 400; font-display: swap; src: url(../../fonts/SFProDisplay-Regular.75a6f5d.woff2) format('woff2'); }
+  @font-face { font-family: 'SF Pro Display'; font-weight: 500; font-display: swap; src: url(../../fonts/SFProDisplay-Medium.48749ab.woff2) format('woff2'); }
+  :root { --ar: 1897 / 1067; --ink: #111; --muted: #6b6b6b; --accent: #5b2a86; --bg: #e9e8e5; --panel: #fff; --app: #f4f3f7; --u: 0.5px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 400 15px/1.3 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
+
+  /* the stage is one 1920 x 1080 viewport of the app; taller screens (the dashboard) scroll inside it.
+     --u is one screen pixel in CSS pixels */
+  .stage { position: relative; width: min(100%, calc((100vh - 96px) * var(--ar))); aspect-ratio: var(--ar); border-radius: 0; overflow: hidden; background: var(--app); box-shadow: 0 20px 60px rgba(0, 0, 0, .14), 0 0 0 1px rgba(0, 0, 0, .06); user-select: none; -webkit-tap-highlight-color: transparent; }
+  .scroller { position: absolute; left: 0; top: 0; width: 100%; will-change: transform; transition: transform .45s cubic-bezier(.4, 0, .2, 1); }
+  .screen { position: absolute; left: 0; top: 0; width: 100%; visibility: hidden; pointer-events: none; }
+  .screen.on { visibility: visible; }
+  .layer { position: absolute; left: 0; top: 0; width: 100%; height: 0; overflow: visible; pointer-events: none; }
+
+  /* sprites: a piece of a screen shown at its own place (or moved) */
+  .spr { position: absolute; background-repeat: no-repeat; will-change: transform, opacity; }
+  .fill { position: absolute; }
+
+  /* hover targets: a sprite of the element itself, so at rest nothing changes */
+  .tg { position: absolute; appearance: none; border: 0; padding: 0; background-color: transparent; background-repeat: no-repeat; pointer-events: auto; cursor: pointer; transition: transform .16s ease; }
+  .tg::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: transparent; transition: background-color .16s ease; pointer-events: none; }
+  .tg.btn.hover::after, .tg.icon.hover::after { background: rgba(40, 10, 70, .07); }
+  .tg.row.hover::after { background: rgba(91, 42, 134, .05); }
+  .tg.pri.hover::after { background: rgba(255, 255, 255, .16); }
+  .tg.link.hover { transform: translateX(calc(var(--u) * 2)); }
+  .tg.bg { cursor: default; }
+  .tg.press { transform: scale(.965); transition-duration: .08s; }
+  .tg.row.press, .tg.bg.press { transform: none; }
+  .tg:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .tg.hint { animation: hint .9s ease; }
+  @keyframes hint { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 calc(var(--u) * 4) rgba(91, 42, 134, .5); } }
+
+  /* the demo cursor and its click ripple (in stage space, not scrolled) */
+  .cursor { position: absolute; left: 0; top: 0; width: calc(var(--u) * 40); pointer-events: none; z-index: 5; opacity: 0; transition: opacity .3s; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35)); will-change: transform; }
+  .cursor.on { opacity: 1; }
+  .cursor svg { display: block; width: 100%; height: auto; transition: transform .1s ease; transform-origin: 10% 10%; }
+  .cursor.down svg { transform: scale(.82); }
+  .ripple { position: absolute; width: calc(var(--u) * 70); height: calc(var(--u) * 70); margin: calc(var(--u) * -35) 0 0 calc(var(--u) * -35); border-radius: 50%; background: rgba(91, 42, 134, .3); pointer-events: none; z-index: 4; animation: ripple .5s ease-out forwards; }
+  @keyframes ripple { from { transform: scale(.2); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+
+  .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; background: var(--app); transition: opacity .3s; pointer-events: none; z-index: 6; }
+  .loading.done { opacity: 0; }
+
+  /* controls */
+  .bar { display: flex; align-items: center; gap: 14px; width: min(100%, calc((100vh - 96px) * var(--ar))); min-height: 44px; }
+  .btn-ui { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--panel); color: var(--ink); font: inherit; font-weight: 500; cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+  .btn-ui:hover { background: #f6f6f6; }
+  .btn-ui:focus-visible, .dot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .btn-ui svg { width: 14px; height: 14px; }
+  .btn-ui--icon { width: 40px; padding: 0; justify-content: center; }
+  .caption { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .caption b { color: var(--ink); font-weight: 500; }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .18); cursor: pointer; }
+  .dot.on { background: var(--accent); }
+  @media (max-width: 700px) { .dots { display: none; } .bar { gap: 8px; } .btn-ui--label span { display: none; } }
+
+  /* ?embed: inside a case study (iframe height = width * 9 / 16 + 58 px): no page background, full width */
+  html.embed body { background: transparent; padding: 0; justify-content: flex-start; }
+  html.embed .stage, html.embed .bar { width: 100%; }
+  html.embed .stage { box-shadow: 0 0 0 1px rgba(0, 0, 0, .06); }
+  html.embed .bar { min-height: 44px; height: 44px; }
+  .scroller { transition-duration: 1.4s; transition-timing-function: cubic-bezier(.45, 0, .2, 1); }
+  #targets .tg { pointer-events: none; cursor: default; }
+  .stage { cursor: default; }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage" aria-label="Scaled Cognition website prototype" role="region">
+    <div class="scroller" id="scroller">
+      <div class="layer" id="amb"></div>
+      <div class="layer" id="fx"></div>
+      <div class="layer" id="targets"></div>
+    </div>
+    <div class="cursor" id="cursor" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 2.5l15.5 10.2-6.9 1.3 4 7.6-3.1 1.6-4-7.6L4.6 20.3z" fill="#111" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+    <div class="loading" id="loading">Loading prototype</div>
+  </div>
+  <div class="bar">
+    <button class="btn-ui btn-ui--label" id="play" type="button"></button>
+    <button class="btn-ui btn-ui--icon" id="restart" type="button" aria-label="Start over"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 1 0 1.7-4"/><path d="M2.5 2v3.5H6"/></svg></button>
+    <div class="caption" id="caption" aria-live="polite"></div>
+    <div class="dots" id="dots"></div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+  var D = {"w":1897,"vh":1067,"scrollMs":1500,"app":"#ffffff","what":"Scaled Cognition website","drawer":{},"figma":{"name":"scaled-website","exportScale":1,"screens":[{"file":"01-home.png","figma":"580:10638","name":"Website \u00b7 Home","size":[1897,13654],"links":[{"element":"Get Started","to":"09-contact","rect":[810,487,944,541],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[956,487,1087,541],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 2","to":"02-meet-apt-1","rect":[383,6129,514,6183],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform","to":"03-explore-platform","rect":[951,6524,1121,6578],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[950,7603,1142,7665],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1146,7603,1348,7665],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo","to":"09-contact","rect":[975,10960,1153,11014],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"View All","to":"07-resources","rect":[1506,11461,1611,11515],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 3","to":"02-meet-apt-1","rect":[287,3148,607,3222],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 4","to":"02-meet-apt-1","rect":[287,3378,418,3432],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Get a Demo","to":"09-contact","rect":[1230,12704,1365,12758],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform 2","to":"03-explore-platform","rect":[869,12979,1003,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 5","to":"02-meet-apt-1","rect":[869,13007,965,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,13035,937,13063],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications 2","to":"05-telecommunications","rect":[1055,12979,1220,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality 2","to":"06-travel","rect":[1055,13007,1210,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,13007,1402,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources","to":"07-resources","rect":[1469,12979,1558,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1469,13007,1611,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 3","to":"09-contact","rect":[1433,21,1611,75],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Product menu","to":"home-product-menu","rect":[724,28,813,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Industries menu","to":"home-industries-menu","rect":[838,28,941,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Company menu","to":"home-company-menu","rect":[967,28,1069,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Tab \u00b7 Travel & Hospitality","to":"home-travel-tab","rect":[956,7609,1136,7659],"transition":"DISSOLVE","ms":200,"trigger":"ON_CLICK","keep":true},{"element":"Tab \u00b7 Telecommunications","to":"home-telecom-tab","rect":[1152,7609,1342,7659],"transition":"DISSOLVE","ms":200,"trigger":"ON_CLICK","keep":true}]},{"file":"02-meet-apt-1.png","figma":"580:11242","name":"Website \u00b7 Meet APT-1","size":[1897,10296],"links":[{"element":"Explore Platform","to":"03-explore-platform","rect":[304,4903,441,4931],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"View All","to":"07-resources","rect":[1523,8156,1594,8184],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Get Started","to":"09-contact","rect":[1247,9358,1348,9386],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform 2","to":"03-explore-platform","rect":[869,9620,1003,9648],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,9676,937,9704],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1055,9620,1220,9648],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[1055,9648,1210,9676],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,9648,1402,9676],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources","to":"07-resources","rect":[1469,9620,1558,9648],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo","to":"09-contact","rect":[1469,9648,1611,9676],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform 3","to":"03-explore-platform","rect":[344,7688,481,7716],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1450,34,1594,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Logo","to":"01-home","rect":[287,18,459,77],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false}]},{"file":"03-explore-platform.png","figma":"580:11722","name":"Website \u00b7 Explore Platform","size":[1897,10508],"links":[{"element":"Schedule a Demo","to":"09-contact","rect":[1247,9571,1391,9599],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[869,9861,965,9889],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,9889,937,9917],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1055,9833,1220,9861],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[1055,9861,1210,9889],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,9861,1402,9889],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources","to":"07-resources","rect":[1469,9833,1558,9861],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1469,9861,1611,9889],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 2","to":"02-meet-apt-1","rect":[344,9089,442,9117],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 3","to":"09-contact","rect":[1450,34,1594,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Logo","to":"01-home","rect":[287,18,459,77],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false}]},{"file":"04-go-live.png","figma":"580:12279","name":"Website \u00b7 Go Live","size":[1897,8484],"links":[{"element":"Resources","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo","to":"09-contact","rect":[1450,34,1594,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"View All","to":"07-resources","rect":[1523,6344,1594,6372],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Get a Demo","to":"09-contact","rect":[1247,7546,1349,7574],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform","to":"03-explore-platform","rect":[869,7808,1003,7836],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[869,7836,965,7864],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1055,7808,1220,7836],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[1055,7836,1210,7864],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,7836,1402,7864],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1469,7808,1558,7836],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1469,7836,1611,7864],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 2","to":"02-meet-apt-1","rect":[344,5876,442,5904],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform 2","to":"03-explore-platform","rect":[1012,5876,1149,5904],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Logo","to":"01-home","rect":[287,18,459,77],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false}]},{"file":"05-telecommunications.png","figma":"580:12754","name":"Website \u00b7 Telecommunications","size":[1897,8556],"links":[{"element":"View All","to":"07-resources","rect":[1523,6416,1594,6444],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Get a Demo","to":"09-contact","rect":[1247,7618,1349,7646],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform","to":"03-explore-platform","rect":[869,7880,1003,7908],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[869,7908,965,7936],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,7936,937,7964],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[1055,7908,1210,7936],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,7908,1402,7936],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources","to":"07-resources","rect":[1469,7880,1558,7908],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo","to":"09-contact","rect":[1469,7908,1611,7936],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 2","to":"02-meet-apt-1","rect":[344,4958,442,4986],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform 2","to":"03-explore-platform","rect":[1012,4958,1149,4986],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1450,34,1594,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Logo","to":"01-home","rect":[287,18,459,77],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false}]},{"file":"06-travel.png","figma":"580:13253","name":"Website \u00b7 Travel & Hospitality","size":[1897,8593],"links":[{"element":"Resources","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo","to":"09-contact","rect":[1450,34,1594,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"View All","to":"07-resources","rect":[1523,6392,1594,6420],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Get a Demo","to":"09-contact","rect":[1247,7656,1349,7684],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform","to":"03-explore-platform","rect":[869,7918,1003,7946],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[869,7946,965,7974],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,7974,937,8002],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1055,7918,1220,7946],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,7946,1402,7974],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1469,7918,1558,7946],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1469,7946,1611,7974],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 2","to":"02-meet-apt-1","rect":[344,4934,442,4962],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform 2","to":"03-explore-platform","rect":[1012,4934,1149,4962],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Logo","to":"01-home","rect":[287,18,459,77],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false}]},{"file":"07-resources.png","figma":"580:13749","name":"Website \u00b7 Resources","size":[1897,4421],"links":[{"element":"Get a Demo","to":"09-contact","rect":[1247,3483,1349,3511],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform","to":"03-explore-platform","rect":[869,3745,1003,3773],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[869,3773,965,3801],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,3801,937,3829],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1055,3745,1220,3773],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[1055,3773,1210,3801],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,3773,1402,3801],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo","to":"09-contact","rect":[1469,3773,1611,3801],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1450,34,1594,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Logo","to":"01-home","rect":[287,18,459,77],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false}]},{"file":"08-careers.png","figma":"580:14122","name":"Website \u00b7 Careers","size":[1897,6125],"links":[{"element":"Resources","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo","to":"09-contact","rect":[1450,34,1594,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Get a Demo","to":"09-contact","rect":[1247,5187,1349,5215],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform","to":"03-explore-platform","rect":[869,5449,1003,5477],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[869,5477,965,5505],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,5505,937,5533],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1055,5449,1220,5477],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[1055,5477,1210,5505],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1469,5449,1558,5477],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1469,5477,1611,5505],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Logo","to":"01-home","rect":[287,18,459,77],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false}]},{"file":"09-contact.png","figma":"580:14340","name":"Website \u00b7 Contact","size":[1897,4973],"links":[{"element":"View All","to":"07-resources","rect":[1523,2833,1594,2861],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform","to":"03-explore-platform","rect":[869,4297,1003,4325],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[869,4325,965,4353],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,4353,937,4381],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1055,4297,1220,4325],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[1055,4325,1210,4353],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,4325,1402,4353],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources","to":"07-resources","rect":[1469,4297,1558,4325],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Logo","to":"01-home","rect":[287,18,459,77],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false}]},{"file":"home-product-menu.png","figma":"586:64619","name":"Website \u00b7 Home \u00b7 Product menu","size":[1897,13654],"links":[{"element":"Get Started","to":"09-contact","rect":[810,487,944,541],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[956,487,1087,541],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 2","to":"02-meet-apt-1","rect":[383,6129,514,6183],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform","to":"03-explore-platform","rect":[951,6524,1121,6578],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[950,7603,1142,7665],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1146,7603,1348,7665],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo","to":"09-contact","rect":[975,10960,1153,11014],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"View All","to":"07-resources","rect":[1506,11461,1611,11515],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 3","to":"02-meet-apt-1","rect":[287,3148,607,3222],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 4","to":"02-meet-apt-1","rect":[287,3378,418,3432],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Get a Demo","to":"09-contact","rect":[1230,12704,1365,12758],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform 2","to":"03-explore-platform","rect":[869,12979,1003,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 5","to":"02-meet-apt-1","rect":[869,13007,965,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,13035,937,13063],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications 2","to":"05-telecommunications","rect":[1055,12979,1220,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality 2","to":"06-travel","rect":[1055,13007,1210,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,13007,1402,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources","to":"07-resources","rect":[1469,12979,1558,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1469,13007,1611,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 3","to":"09-contact","rect":[1433,21,1611,75],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Product menu","to":"01-home","rect":[724,28,813,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Industries menu","to":"home-industries-menu","rect":[838,28,941,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Company menu","to":"home-company-menu","rect":[967,28,1069,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Menu (close)","to":"01-home","rect":[0,95,1897,1195],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Menu \u00b7 Explore Platform","to":"03-explore-platform","rect":[729,91,977,135],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Menu \u00b7 Meet APT-1","to":"02-meet-apt-1","rect":[729,137,977,181],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Menu \u00b7 Go Live","to":"04-go-live","rect":[729,183,977,227],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Tab \u00b7 Travel & Hospitality","to":"home-travel-tab","rect":[956,7609,1136,7659],"transition":"DISSOLVE","ms":200,"trigger":"ON_CLICK","keep":true},{"element":"Tab \u00b7 Telecommunications","to":"home-telecom-tab","rect":[1152,7609,1342,7659],"transition":"DISSOLVE","ms":200,"trigger":"ON_CLICK","keep":true}]},{"file":"home-industries-menu.png","figma":"586:65266","name":"Website \u00b7 Home \u00b7 Industries menu","size":[1897,13654],"links":[{"element":"Get Started","to":"09-contact","rect":[810,487,944,541],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[956,487,1087,541],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 2","to":"02-meet-apt-1","rect":[383,6129,514,6183],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform","to":"03-explore-platform","rect":[951,6524,1121,6578],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[950,7603,1142,7665],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1146,7603,1348,7665],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo","to":"09-contact","rect":[975,10960,1153,11014],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"View All","to":"07-resources","rect":[1506,11461,1611,11515],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 3","to":"02-meet-apt-1","rect":[287,3148,607,3222],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 4","to":"02-meet-apt-1","rect":[287,3378,418,3432],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Get a Demo","to":"09-contact","rect":[1230,12704,1365,12758],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform 2","to":"03-explore-platform","rect":[869,12979,1003,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 5","to":"02-meet-apt-1","rect":[869,13007,965,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,13035,937,13063],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications 2","to":"05-telecommunications","rect":[1055,12979,1220,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality 2","to":"06-travel","rect":[1055,13007,1210,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,13007,1402,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources","to":"07-resources","rect":[1469,12979,1558,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1469,13007,1611,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 3","to":"09-contact","rect":[1433,21,1611,75],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Product menu","to":"home-product-menu","rect":[724,28,813,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Industries menu","to":"01-home","rect":[838,28,941,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Company menu","to":"home-company-menu","rect":[967,28,1069,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Menu (close)","to":"01-home","rect":[0,95,1897,1195],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Menu \u00b7 Telecommunications","to":"05-telecommunications","rect":[843,91,1091,135],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Menu \u00b7 Travel & Hospitality","to":"06-travel","rect":[843,137,1091,181],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Tab \u00b7 Travel & Hospitality","to":"home-travel-tab","rect":[956,7609,1136,7659],"transition":"DISSOLVE","ms":200,"trigger":"ON_CLICK","keep":true},{"element":"Tab \u00b7 Telecommunications","to":"home-telecom-tab","rect":[1152,7609,1342,7659],"transition":"DISSOLVE","ms":200,"trigger":"ON_CLICK","keep":true}]},{"file":"home-company-menu.png","figma":"586:65917","name":"Website \u00b7 Home \u00b7 Company menu","size":[1897,13654],"links":[{"element":"Get Started","to":"09-contact","rect":[810,487,944,541],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[956,487,1087,541],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 2","to":"02-meet-apt-1","rect":[383,6129,514,6183],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform","to":"03-explore-platform","rect":[951,6524,1121,6578],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[950,7603,1142,7665],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1146,7603,1348,7665],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo","to":"09-contact","rect":[975,10960,1153,11014],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"View All","to":"07-resources","rect":[1506,11461,1611,11515],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 3","to":"02-meet-apt-1","rect":[287,3148,607,3222],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 4","to":"02-meet-apt-1","rect":[287,3378,418,3432],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Get a Demo","to":"09-contact","rect":[1230,12704,1365,12758],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform 2","to":"03-explore-platform","rect":[869,12979,1003,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 5","to":"02-meet-apt-1","rect":[869,13007,965,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,13035,937,13063],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications 2","to":"05-telecommunications","rect":[1055,12979,1220,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality 2","to":"06-travel","rect":[1055,13007,1210,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,13007,1402,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources","to":"07-resources","rect":[1469,12979,1558,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1469,13007,1611,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 3","to":"09-contact","rect":[1433,21,1611,75],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Product menu","to":"home-product-menu","rect":[724,28,813,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Industries menu","to":"home-industries-menu","rect":[838,28,941,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Company menu","to":"01-home","rect":[967,28,1069,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Menu (close)","to":"01-home","rect":[0,95,1897,1195],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Menu \u00b7 Careers","to":"08-careers","rect":[972,137,1220,181],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Tab \u00b7 Travel & Hospitality","to":"home-travel-tab","rect":[956,7609,1136,7659],"transition":"DISSOLVE","ms":200,"trigger":"ON_CLICK","keep":true},{"element":"Tab \u00b7 Telecommunications","to":"home-telecom-tab","rect":[1152,7609,1342,7659],"transition":"DISSOLVE","ms":200,"trigger":"ON_CLICK","keep":true}]},{"file":"home-travel-tab.png","figma":"586:66562","name":"Website \u00b7 Home \u00b7 Travel tab","size":[1897,13654],"links":[{"element":"Get Started","to":"09-contact","rect":[810,487,944,541],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[956,487,1087,541],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 2","to":"02-meet-apt-1","rect":[383,6129,514,6183],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform","to":"03-explore-platform","rect":[951,6524,1121,6578],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[950,7603,1142,7665],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1146,7603,1348,7665],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo","to":"09-contact","rect":[975,10960,1153,11014],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"View All","to":"07-resources","rect":[1506,11461,1611,11515],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 3","to":"02-meet-apt-1","rect":[287,3148,607,3222],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 4","to":"02-meet-apt-1","rect":[287,3378,418,3432],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Get a Demo","to":"09-contact","rect":[1230,12704,1365,12758],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform 2","to":"03-explore-platform","rect":[869,12979,1003,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 5","to":"02-meet-apt-1","rect":[869,13007,965,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,13035,937,13063],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications 2","to":"05-telecommunications","rect":[1055,12979,1220,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality 2","to":"06-travel","rect":[1055,13007,1210,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,13007,1402,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources","to":"07-resources","rect":[1469,12979,1558,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1469,13007,1611,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 3","to":"09-contact","rect":[1433,21,1611,75],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Product menu","to":"home-product-menu","rect":[724,28,813,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Industries menu","to":"home-industries-menu","rect":[838,28,941,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Company menu","to":"home-company-menu","rect":[967,28,1069,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Tab \u00b7 Banking & Finance","to":"01-home","rect":[554,7609,726,7659],"transition":"DISSOLVE","ms":200,"trigger":"ON_CLICK","keep":true},{"element":"Tab \u00b7 Telecommunications","to":"home-telecom-tab","rect":[1152,7609,1342,7659],"transition":"DISSOLVE","ms":200,"trigger":"ON_CLICK","keep":true},{"element":"Explore industry","to":"06-travel","rect":[997,8090,1229,8132],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false}]},{"file":"home-telecom-tab.png","figma":"586:67205","name":"Website \u00b7 Home \u00b7 Telecom tab","size":[1897,13654],"links":[{"element":"Get Started","to":"09-contact","rect":[810,487,944,541],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1","to":"02-meet-apt-1","rect":[956,487,1087,541],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 2","to":"02-meet-apt-1","rect":[383,6129,514,6183],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform","to":"03-explore-platform","rect":[951,6524,1121,6578],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality","to":"06-travel","rect":[950,7603,1142,7665],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications","to":"05-telecommunications","rect":[1146,7603,1348,7665],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo","to":"09-contact","rect":[975,10960,1153,11014],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"View All","to":"07-resources","rect":[1506,11461,1611,11515],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 3","to":"02-meet-apt-1","rect":[287,3148,607,3222],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 4","to":"02-meet-apt-1","rect":[287,3378,418,3432],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Get a Demo","to":"09-contact","rect":[1230,12704,1365,12758],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Explore Platform 2","to":"03-explore-platform","rect":[869,12979,1003,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Meet APT-1 5","to":"02-meet-apt-1","rect":[869,13007,965,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Go Live","to":"04-go-live","rect":[869,13035,937,13063],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Telecommunications 2","to":"05-telecommunications","rect":[1055,12979,1220,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Travel & Hospitality 2","to":"06-travel","rect":[1055,13007,1210,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Careers","to":"08-careers","rect":[1332,13007,1402,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources","to":"07-resources","rect":[1469,12979,1558,13007],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 2","to":"09-contact","rect":[1469,13007,1611,13035],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Resources 2","to":"07-resources","rect":[1089,34,1178,62],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Schedule a Demo 3","to":"09-contact","rect":[1433,21,1611,75],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Product menu","to":"home-product-menu","rect":[724,28,813,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Industries menu","to":"home-industries-menu","rect":[838,28,941,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Company menu","to":"home-company-menu","rect":[967,28,1069,68],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false},{"element":"Tab \u00b7 Banking & Finance","to":"01-home","rect":[554,7609,726,7659],"transition":"DISSOLVE","ms":200,"trigger":"ON_CLICK","keep":true},{"element":"Tab \u00b7 Travel & Hospitality","to":"home-travel-tab","rect":[956,7609,1136,7659],"transition":"DISSOLVE","ms":200,"trigger":"ON_CLICK","keep":true},{"element":"Explore industry","to":"05-telecommunications","rect":[997,8090,1229,8132],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK","keep":false}]}]},"sizes":{"01-home":[960,1897],"02-meet-apt-1":[960,1897],"03-explore-platform":[960,1897],"04-go-live":[960,1897],"05-telecommunications":[960,1897],"06-travel":[960,1897],"07-resources":[960,1897],"08-careers":[960,1897],"09-contact":[960,1897],"home-product-menu":[960,1897],"home-industries-menu":[960,1897],"home-company-menu":[960,1897],"home-travel-tab":[960,1897],"home-telecom-tab":[960,1897]},"steps":[{"id":"01-home","part":"Home","label":"Open a menu, or scroll to the industry tabs","demo":["Product menu","Tab \u00b7 Travel & Hospitality"]},{"id":"home-product-menu","part":"Navigation","label":"Dropdown menus built from the site structure","demo":"Menu \u00b7 Meet APT-1"},{"id":"02-meet-apt-1","part":"Meet APT-1","label":"The model page, built from the shared sections","demo":"Explore Platform"},{"id":"03-explore-platform","part":"Explore Platform","label":"The platform tools, then back home","demo":"Logo"},{"id":"home-travel-tab","part":"Industry tabs","label":"Each tab swaps the story in place","demo":"Tab \u00b7 Telecommunications"},{"id":"home-telecom-tab","part":"Industry tabs","label":"Telecommunications, then its page","demo":"Explore industry"},{"id":"05-telecommunications","part":"Industries","label":"An industry page assembled from the same sections","demo":"Resources 2"},{"id":"07-resources","part":"Resources","label":"Blog and news from the Webflow CMS","demo":"Careers"},{"id":"08-careers","part":"Careers","label":"Open roles from a CMS collection","demo":"Schedule a Demo"},{"id":"09-contact","part":"Contact","label":"Schedule a demo, then back home","demo":"Logo"},{"id":"home-industries-menu","part":"Navigation","label":"Industries menu","demo":null},{"id":"home-company-menu","part":"Navigation","label":"Company menu","demo":null},{"id":"04-go-live","part":"Go Live","label":"Deployment and support","demo":null},{"id":"06-travel","part":"Industries","label":"Travel and hospitality","demo":null}]};
+  var W = D.w, VH = D.vh, READ = 1500, APP = D.app;
+  var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var EASE = 'cubic-bezier(.4, 0, .2, 1)', OUT = 'cubic-bezier(.16, 1, .3, 1)', POP = 'cubic-bezier(.2, 1.35, .4, 1)';
+
+  // Every prototype link of the Figma flow (hotspots on each frame), from .build/figma-src/flows/<name>/links.json
+  var FIGMA = D.figma;
+  var STEPS = D.steps;
+  var INDEX = {}; STEPS.forEach(function (s, i) { INDEX[s.id] = i; });
+  FIGMA.screens.forEach(function (sc) {
+    var s = STEPS[INDEX[sc.file.replace(/\.png$/, '')]];
+    s.h = sc.size[1]; s.alt = sc.name.replace(/^.*— /, '') + ' screen of the ' + D.what;
+    // full-screen backdrops (close a drawer or a dialog) go first, so the links on top of them win
+    s.links = sc.links.slice().sort(function (a, b) { return (/close\)$/i.test(b.element)) - (/close\)$/i.test(a.element)); });
+  });
+  var demoOf = function (s) { return Array.isArray(s.demo) ? s.demo[((s.visit || 1) - 1) % s.demo.length] : s.demo; };
+  var kindOf = function (l) {
+    if (/\((close)\)$/i.test(l.element)) return 'bg';
+    if (/^(Approve|Send|Save|Add new|New group member|Search bar)/.test(l.element)) return 'pri';
+    if (/(tab|Chip|Cancel|Back|Close)/i.test(l.element)) return 'btn';
+    if (/(line|field|Artist|row|list)/i.test(l.element)) return 'row';
+    if (/\(nav\)|Menu/.test(l.element)) return 'icon';
+    return 'link';
+  };
+  // a drawer slides in from the right over the page it was opened from; between drawer states it just dissolves
+  var DIM = 'rgba(15, 23, 51, .35)';
+  var TRANS = {};
+  var dissolve = function (x) {
+    var dr = D.drawer[STEPS[x.B].id], wasDr = D.drawer[STEPS[x.A].id];
+    if (dr && !wasDr) {
+      x.a(x.spr(x.B, [0, 0, dr[0], VH]), [{ opacity: 0 }, { opacity: 1 }], 280, 0, EASE);
+      x.a(x.spr(x.B, [dr[0], 0, W, VH]), [{ transform: x.tx(W - dr[0]) }, { transform: 'none' }], 460, 40, OUT);
+      return 520;
+    }
+    if (wasDr && !dr) {
+      x.a(x.spr(x.B, [0, 0, W, VH]), [{ opacity: 0 }, { opacity: 1 }], 260, 60, EASE);
+      x.a(x.spr(x.A, [dr ? 0 : wasDr[0], 0, W, VH]), [{ transform: 'none' }, { transform: x.tx(W - wasDr[0]) }], 320, 0, EASE);
+      return 380;
+    }
+    x.a(x.spr(x.B, [0, scrollY, W, scrollY + VH]), [{ opacity: 0 }, { opacity: 1 }], 220, 0, EASE);   // the visible part
+    return 260;
+  };
+
+  // ---- machinery ----------------------------------------------------------------------------------
+  var stage = document.getElementById('stage'), scroller = document.getElementById('scroller');
+  var fx = document.getElementById('fx'), amb = document.getElementById('amb'), tgs = document.getElementById('targets');
+  var cursor = document.getElementById('cursor'), playBtn = document.getElementById('play'), caption = document.getElementById('caption'), dotsEl = document.getElementById('dots');
+  var current = -1, playing = !still, busy = false, timer = null, visible = true, cur = { x: W * .78, y: VH * .83 }, u = 1, scrollY = 0;
+  var frame = function (fn) { var done = false, go = function () { if (!done) { done = true; fn(performance.now()); } }; requestAnimationFrame(go); setTimeout(go, 50); };
+  var setU = function () { u = stage.clientWidth / W; stage.style.setProperty('--u', u + 'px'); applyScroll(false); };
+  var px = function (v) { return 'calc(var(--u) * ' + v + ')'; };
+  var place = function (el, r) { el.style.left = px(r[0]); el.style.top = px(r[1]); el.style.width = px(r[2] - r[0]); el.style.height = px(r[3] - r[1]); };
+
+  var imgs = STEPS.map(function (s) {
+    var img = document.createElement('img');
+    img.className = 'screen'; img.alt = s.alt; img.decoding = 'async'; img.width = W; img.height = s.h;
+    img.sizes = '100vw';
+    img.dataset.srcset = D.sizes[s.id].map(function (w) { return 'img/' + s.id + '-' + w + '.avif ' + w + 'w'; }).join(', ');
+    scroller.insertBefore(img, amb);
+    return img;
+  });
+  var src = function (k) { return imgs[k].currentSrc || ('img/' + STEPS[k].id + '-1920.avif'); };
+  var bgFor = function (el, k, r) {
+    el.style.backgroundImage = 'url(' + src(k) + ')';
+    el.style.backgroundSize = px(W) + ' ' + px(STEPS[k].h);
+    el.style.backgroundPosition = px(-r[0]) + ' ' + px(-r[1]);
+  };
+  var dots = STEPS.map(function (s, i) {
+    var d = document.createElement('button');
+    d.type = 'button'; d.className = 'dot'; d.setAttribute('aria-label', 'Screen ' + (i + 1) + ': ' + s.label);
+    d.addEventListener('click', function () { pause(); jump(i); });
+    dotsEl.appendChild(d);
+    return d;
+  });
+
+  var ready = STEPS.map(function () { return null; });
+  function load(i) {
+    if (!ready[i]) {
+      var img = imgs[i];
+      ready[i] = new Promise(function (res) { img.onload = img.onerror = res; img.srcset = img.dataset.srcset; })
+        .then(function () { return img.decode ? Promise.race([img.decode().catch(function () {}), new Promise(function (r) { setTimeout(r, 400); })]) : null; });
+    }
+    return ready[i];
+  }
+  (function chain(i) { if (i < STEPS.length) load(i).then(function () { chain(i + 1); }); })(0);
+
+  // taller screens scroll inside the stage (wheel, or the demo when its target is below the fold)
+  function maxScroll() { return current < 0 ? 0 : Math.max(0, STEPS[current].h - VH); }
+  function applyScroll(animate) {
+    scroller.style.transition = animate ? '' : 'none';
+    scroller.style.transform = 'translateY(' + (-scrollY * u) + 'px)';
+  }
+  if (0) stage.addEventListener('wheel', function (e) {
+    var m = maxScroll();
+    if (!m || busy) return;
+    var y = Math.max(0, Math.min(m, scrollY + e.deltaY / u));
+    if (y !== scrollY) { e.preventDefault(); scrollY = y; applyScroll(false); }
+  }, { passive: false });
+
+  function builder(layer, a, b, anims) {
+    return {
+      A: a, B: b,
+      ty: function (v) { return 'translateY(' + v * u + 'px)'; },
+      tx: function (v) { return 'translateX(' + v * u + 'px)'; },
+      fill: function (r, color) { var e = document.createElement('div'); e.className = 'fill'; place(e, r); e.style.background = color; layer.appendChild(e); return e; },
+      spr: function (k, r) { var e = document.createElement('div'); e.className = 'spr'; place(e, r); bgFor(e, k, r); layer.appendChild(e); return e; },
+      a: function (el, frames, dur, delay, easing) {
+        anims.push(el.animate(frames, { duration: still ? 1 : dur, delay: still ? 0 : (delay || 0), easing: easing || EASE, fill: 'both' }));
+      },
+    };
+  }
+
+  function showBase(k) {
+    imgs.forEach(function (img, i) { img.classList.toggle('on', i === k); });
+    imgs[k].style.height = px(STEPS[k].h);
+  }
+
+  function buildTargets(k) {
+    tgs.innerHTML = '';
+    var s = STEPS[k];
+    s.links.forEach(function (l) {
+      var demo = l.element === demoOf(s), kind = kindOf(l);
+      var e = document.createElement(kind === 'bg' ? 'div' : 'button');
+      e.className = 'tg ' + kind; place(e, l.rect);
+      e.style.borderRadius = px(kind === 'row' || kind === 'bg' ? 0 : kind === 'icon' ? 8 : 6);
+      if (kind !== 'bg') { bgFor(e, k, l.rect); e.type = 'button'; e.setAttribute('aria-label', l.element.replace(/^(Button|Nav|Row|Icon) \/ /, '').replace(/ \(hover\)$/, '')); }
+      if (demo) e.dataset.demo = '1';
+      e.addEventListener('pointerenter', function () { e.classList.add('hover'); });
+      e.addEventListener('pointerleave', function () { e.classList.remove('hover', 'press'); });
+      e.addEventListener('pointerdown', function () { e.classList.add('press'); });
+      e.addEventListener('pointerup', function () { e.classList.remove('press'); });
+      e.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        if (busy) return;
+        if (playing) pause();
+        go(INDEX[l.to], l.keep);
+      });
+      tgs.appendChild(e);
+    });
+  }
+  function hint() {
+    var h = tgs.querySelector('[data-demo]');
+    if (h) { h.classList.remove('hint'); void h.offsetWidth; h.classList.add('hint'); }
+  }
+
+  function settle(k) {
+    current = k;
+    showBase(k);
+    frame(function () { fx.innerHTML = ''; });
+    amb.innerHTML = '';
+    var s = STEPS[k];
+    s.visit = (s.visit || 0) + 1;
+    buildTargets(k);
+    dots.forEach(function (d, i) { d.classList.toggle('on', i === k); d.setAttribute('aria-current', i === k ? 'step' : 'false'); });
+    caption.innerHTML = '<b>' + (k + 1) + ' / ' + STEPS.length + ' · ' + s.part + '</b> &nbsp;' + s.label;
+    load((k + 1) % STEPS.length);
+    clearTimeout(timer);
+    if (s.demo && s.demo.auto && (playing || s.demo.always)) timer = setTimeout(function () { if (current === k && !busy) go(INDEX[s.demo.auto]); }, still ? 10 : s.demo.ms);
+    else if (playing) timer = setTimeout(demoClick, s.dwell || READ);
+  }
+
+  function jump(k) {
+    clearTimeout(timer); fx.innerHTML = ''; scrollY = 0; applyScroll(false);
+    load(k).then(function () {
+      settle(k);
+      var l = document.getElementById('loading');
+      if (l) { l.classList.add('done'); setTimeout(function () { l.remove(); }, 400); }
+    });
+  }
+
+  function go(b, keep) {
+    if (busy || b === undefined) return;
+    var a = current;
+    busy = true; clearTimeout(timer);
+    tgs.innerHTML = ''; amb.innerHTML = '';
+    var leave = !keep && scrollY > 0 ? 450 : 0;   // back to the top of a scrolled screen first (not for in-page states)
+    if (!keep) { scrollY = 0; applyScroll(true); }
+    Promise.all([load(a), load(b), new Promise(function (r) { setTimeout(r, leave); })]).then(function () {
+      var anims = [];
+      fx.innerHTML = '';
+      var t = TRANS[STEPS[a].id + '>' + STEPS[b].id] || dissolve;
+      var dur = t(builder(fx, a, b, anims));
+      setTimeout(function () { busy = false; settle(b); }, still ? 10 : dur);
+    });
+  }
+
+  // ---- the demo cursor ----------------------------------------------------------------------------
+  function hoverAt(x, y) {
+    Array.prototype.forEach.call(tgs.children, function (e) {
+      if (e.classList.contains('bg')) return;
+      var l = e.offsetLeft / u, t = e.offsetTop / u, inside = x >= l && x <= l + e.offsetWidth / u && y >= t && y <= t + e.offsetHeight / u;
+      e.classList.toggle('hover', inside);
+    });
+  }
+  function moveTo(x, y, ms, done) {
+    var x0 = cur.x, y0 = cur.y, t0 = performance.now();
+    var cx = (x0 + x) / 2 + (y - y0) * .18, cy = (y0 + y) / 2 - (x - x0) * .18;
+    (function step(now) {
+      var p = Math.min(1, (now - t0) / ms), e = p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+      var bx = (1 - e) * (1 - e) * x0 + 2 * (1 - e) * e * cx + e * e * x, by = (1 - e) * (1 - e) * y0 + 2 * (1 - e) * e * cy + e * e * y;
+      cur = { x: bx, y: by };
+      cursor.style.transform = 'translate(' + bx * u + 'px,' + by * u + 'px)';
+      hoverAt(bx, by + scrollY);
+      if (p < 1) frame(step); else done();
+    })(t0);
+  }
+  function demoClick() {
+    if (!playing || busy) return;
+    if (!visible || document.hidden) { timer = setTimeout(demoClick, 500); return; }
+    var s = STEPS[current], l = s.links.filter(function (x) { return x.element === demoOf(s); })[0];
+    if (s.demo && s.demo.auto) { go(INDEX[s.demo.auto]); return; }
+    if (!l) { pause(); return; }
+    var cy = (l.rect[1] + l.rect[3]) / 2;
+    var want = Math.max(0, Math.min(maxScroll(), cy - VH / 2));
+    if ((cy - scrollY < 90 || cy - scrollY > VH - 90) && Math.abs(want - scrollY) > 4) { scrollY = want; applyScroll(true); timer = setTimeout(demoClick, D.scrollMs); return; }
+    var a = [(l.rect[0] + l.rect[2]) / 2, cy - scrollY];
+    cursor.classList.add('on');
+    moveTo(a[0], a[1], Math.max(450, Math.min(1100, Math.hypot(a[0] - cur.x, a[1] - cur.y) * 1.1)), function () {
+      if (!playing) return;
+      timer = setTimeout(function () {
+        var t = tgs.querySelector('[data-demo]');
+        cursor.classList.add('down'); if (t) t.classList.add('press');
+        var r = document.createElement('div');
+        r.className = 'ripple'; r.style.left = px(a[0]); r.style.top = px(a[1]);
+        stage.appendChild(r); setTimeout(function () { r.remove(); }, 600);
+        timer = setTimeout(function () { cursor.classList.remove('down'); if (t) t.classList.remove('press'); go(INDEX[l.to], l.keep); }, 140);
+      }, 220);
+    });
+  }
+
+  function setPlayLabel() {
+    playBtn.innerHTML = playing
+      ? '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg><span>Pause demo</span>'
+      : '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.2v11.6c0 .6.7 1 1.2.7l9-5.8c.5-.3.5-1 0-1.3l-9-5.9C4.7 1.2 4 1.6 4 2.2z"/></svg><span>Play demo</span>';
+    playBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
+  }
+  function pause() {
+    playing = false; cursor.classList.remove('on', 'down'); setPlayLabel();
+    Array.prototype.forEach.call(tgs.children, function (e) { e.classList.remove('hover', 'press'); });
+    if (!busy) clearTimeout(timer);
+  }
+  function play() { playing = true; setPlayLabel(); if (!busy) { clearTimeout(timer); timer = setTimeout(demoClick, 300); } }
+
+  playBtn.addEventListener('click', function () { playing ? pause() : play(); });
+  document.getElementById('restart').addEventListener('click', function () { cur = { x: W * .78, y: VH * .83 }; cursor.style.transform = 'translate(' + W * .78 * u + 'px,' + VH * .83 * u + 'px)'; jump(0); });
+  
+  document.addEventListener('keydown', function (e) {
+    if (e.target.closest && e.target.closest('button')) return;
+    if (e.key === 'ArrowRight') { pause(); go((current + 1) % STEPS.length); }
+    else if (e.key === 'ArrowLeft') { pause(); jump((current - 1 + STEPS.length) % STEPS.length); }
+    else if (e.key === ' ') { e.preventDefault(); playing ? pause() : play(); }
+  });
+  window.addEventListener('resize', function () { setU(); cursor.style.transform = 'translate(' + cur.x * u + 'px,' + cur.y * u + 'px)'; });
+  if ('IntersectionObserver' in window) new IntersectionObserver(function (e) { visible = e[0].isIntersecting; }).observe(stage);
+
+  setU();
+  setPlayLabel();
+  cursor.style.transform = 'translate(' + W * .78 * u + 'px,' + VH * .83 * u + 'px)';
+  jump(0);
+})();
+</script>
+</body>
+</html>

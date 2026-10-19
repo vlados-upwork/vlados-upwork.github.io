@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive, noimageindex">
+<title>Senna prototype</title>
+<meta name="description" content="Clickable prototype of the Senna Masterpiece control panel: switch modes and drag the sliders.">
+<link rel="icon" href="../../favicon.ico">
+<script>if (/[?&]embed\b/.test(location.search)) document.documentElement.className = 'embed';</script>
+<style>
+  @font-face { font-family: 'SF Pro Display'; font-weight: 400; font-display: swap; src: url(../../fonts/SFProDisplay-Regular.75a6f5d.woff2) format('woff2'); }
+  @font-face { font-family: 'SF Pro Display'; font-weight: 500; font-display: swap; src: url(../../fonts/SFProDisplay-Medium.48749ab.woff2) format('woff2'); }
+  :root { --ink: #111; --muted: #6b6b6b; --accent: #2563f5; --bg: #e9e8e5; --panel: #fff; --u: 0.5px; --ar: 1451 / 957; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 400 15px/1.3 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
+  .stage { position: relative; width: min(100%, calc((100vh - 96px) * var(--ar))); aspect-ratio: var(--ar); user-select: none; -webkit-user-select: none; touch-action: none; -webkit-tap-highlight-color: transparent; }
+  /* the new mode fades in on top; the old one stays until it is covered */
+  .mode { position: absolute; inset: 0; visibility: hidden; transition: visibility 0s .2s; }
+  .mode.on { visibility: visible; z-index: 2; transition: none; animation: modeIn .2s ease; }
+  @keyframes modeIn { from { opacity: 0; } to { opacity: 1; } }
+  .mode > img { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .fill { position: absolute; overflow: hidden; background-repeat: no-repeat; pointer-events: none; }
+  .handle { position: absolute; width: calc(var(--u) * 4); margin-left: calc(var(--u) * -2); background: #fff; pointer-events: none; box-shadow: 0 0 calc(var(--u) * 6) rgba(0, 0, 0, .45), 0 0 calc(var(--u) * 10) rgba(255, 255, 255, .35); }
+  .read { position: absolute; display: flex; justify-content: flex-end; pointer-events: none; }
+  .read img { display: block; height: 100%; }
+  .zone { position: absolute; cursor: ew-resize; }
+  .zone:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  .nav { position: absolute; appearance: none; border: 0; padding: 0; background: transparent; cursor: pointer; border-radius: calc(var(--u) * 10); transition: background-color .15s; }
+  .nav:hover { background: rgba(255, 255, 255, .06); }
+  .nav:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .cursor { position: absolute; left: 0; top: 0; width: calc(var(--u) * 34); pointer-events: none; z-index: 5; opacity: 0; transition: opacity .3s; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35)); }
+  .cursor.on { opacity: 1; }
+  .cursor svg { display: block; width: 100%; height: auto; transition: transform .1s ease; transform-origin: 10% 10%; }
+  .cursor.down svg { transform: scale(.82); }
+  .bar { display: flex; align-items: center; gap: 14px; width: min(100%, calc((100vh - 96px) * var(--ar))); min-height: 44px; }
+  .btn-ui { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--panel); color: var(--ink); font: inherit; font-weight: 500; cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+  .btn-ui:hover { background: #f6f6f6; }
+  .btn-ui svg { width: 14px; height: 14px; }
+  .btn-ui--icon { width: 40px; padding: 0; justify-content: center; }
+  .btn-ui:focus-visible, .dot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .18); cursor: pointer; }
+  .dot.on { background: #5b2a86; }
+  .caption { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .caption b { color: var(--ink); font-weight: 500; }
+  @media (max-width: 700px) { .dots { display: none; } .bar { gap: 8px; } .btn-ui span { display: none; } }
+  html.embed body { background: transparent; padding: 0; justify-content: flex-start; }
+  html.embed .stage, html.embed .bar { width: 100%; }
+  html.embed .bar { height: 44px; }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage" role="region" aria-label="Senna Masterpiece control panel prototype">
+    <div class="cursor" id="cursor" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 2.5l15.5 10.2-6.9 1.3 4 7.6-3.1 1.6-4-7.6L4.6 20.3z" fill="#111" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+  </div>
+  <div class="bar">
+    <button class="btn-ui" id="play" type="button"></button>
+    <button class="btn-ui btn-ui--icon" id="restart" type="button" aria-label="Start over"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 1 0 1.7-4"/><path d="M2.5 2v3.5H6"/></svg></button>
+    <div class="caption" id="caption" aria-live="polite"></div>
+    <div class="dots" id="dots"></div>
+  </div>
+<script>
+(function () {
+  'use strict';
+  // Exported from the Senna Figma file by the Senna exporter (.build/figma-src/flows/senna-panel/data.json),
+  // inserted by .build/prototype_flows.py: modes, slider rows, sidebar links, readout glyph sizes, image sizes
+  var D = {"size":[1451.0,957.0],"modes":{"CCT":{"links":[{"element":"RGBW","to":"RGBW","rect":[146.0,311.0,286.0,376.0]},{"element":"HSI","to":"HSI","rect":[146.0,380.0,286.0,445.0]},{"element":"GEL","to":"GEL","rect":[146.0,449.0,286.0,514.0]},{"element":"XY","to":"XY","rect":[146.0,518.0,286.0,583.0]},{"element":"EFFECTS","to":"EFFECTS","rect":[146.0,587.0,286.0,652.0]},{"element":"DMX","to":"DMX","rect":[146.0,725.0,286.0,790.0]}],"rows":[{"track":[332.0,268.0,612,116],"frac":0.301,"read":{"right":1258.0,"y":290.0,"h":72,"size":56,"text":"30.0%"}},{"track":[332.0,429.0,612,116],"frac":0.35,"read":{"right":1258.0,"y":451.0,"h":72,"size":56,"text":"4050K"}},{"track":[333.0,588.0,612,116],"frac":0.25,"read":{"right":1259.0,"y":610.0,"h":72,"size":56,"text":"-50%"}}]},"XY":{"links":[{"element":"CCT","to":"CCT","rect":[146.0,242.0,286.0,307.0]},{"element":"RGBW","to":"RGBW","rect":[146.0,311.0,286.0,376.0]},{"element":"HSI","to":"HSI","rect":[146.0,380.0,286.0,445.0]},{"element":"GEL","to":"GEL","rect":[146.0,449.0,286.0,514.0]},{"element":"EFFECTS","to":"EFFECTS","rect":[146.0,587.0,286.0,652.0]},{"element":"DMX","to":"DMX","rect":[146.0,725.0,286.0,790.0]}],"rows":[]},"HSI":{"links":[{"element":"CCT","to":"CCT","rect":[146.0,242.0,286.0,307.0]},{"element":"RGBW","to":"RGBW","rect":[146.0,311.0,286.0,376.0]},{"element":"GEL","to":"GEL","rect":[146.0,449.0,286.0,514.0]},{"element":"XY","to":"XY","rect":[146.0,518.0,286.0,583.0]},{"element":"EFFECTS","to":"EFFECTS","rect":[146.0,587.0,286.0,652.0]},{"element":"DMX","to":"DMX","rect":[146.0,725.0,286.0,790.0]}],"rows":[{"track":[332.0,268.0,612,116],"frac":0.301,"read":{"right":1258.0,"y":290.0,"h":72,"size":56,"text":"30.0%"}},{"track":[332.0,429.0,612,116],"frac":0.15,"read":{"right":1258.0,"y":451.0,"h":72,"size":56,"text":"54"}},{"track":[333.0,588.0,612,116],"frac":0.35,"read":{"right":1259.0,"y":610.0,"h":72,"size":56,"text":"35%"}}]},"RGBW":{"links":[{"element":"CCT","to":"CCT","rect":[146.0,242.0,286.0,307.0]},{"element":"HSI","to":"HSI","rect":[146.0,380.0,286.0,445.0]},{"element":"GEL","to":"GEL","rect":[146.0,449.0,286.0,514.0]},{"element":"XY","to":"XY","rect":[146.0,518.0,286.0,583.0]},{"element":"EFFECTS","to":"EFFECTS","rect":[146.0,587.0,286.0,652.0]},{"element":"DMX","to":"DMX","rect":[146.0,725.0,286.0,790.0]}],"rows":[{"track":[332.0,262.0,612,88],"frac":0.199,"read":{"right":1258.0,"y":277.0,"h":59,"size":46,"text":"20.0%"}},{"track":[332.0,380.0,612,88],"frac":0.301,"read":{"right":1258.0,"y":395.0,"h":59,"size":46,"text":"30.0%"}},{"track":[332.0,498.0,612,88],"frac":0.15,"read":{"right":1258.0,"y":513.0,"h":59,"size":46,"text":"15.0%"}},{"track":[332.0,616.0,612,88],"frac":0.25,"read":{"right":1258.0,"y":631.0,"h":59,"size":46,"text":"25.0%"}}]},"GEL":{"links":[{"element":"CCT","to":"CCT","rect":[146.0,242.0,286.0,307.0]},{"element":"RGBW","to":"RGBW","rect":[146.0,311.0,286.0,376.0]},{"element":"HSI","to":"HSI","rect":[146.0,380.0,286.0,445.0]},{"element":"XY","to":"XY","rect":[146.0,518.0,286.0,583.0]},{"element":"EFFECTS","to":"EFFECTS","rect":[146.0,587.0,286.0,652.0]},{"element":"DMX","to":"DMX","rect":[146.0,725.0,286.0,790.0]}],"rows":[]},"EFFECTS":{"links":[{"element":"CCT","to":"CCT","rect":[146.0,242.0,286.0,307.0]},{"element":"RGBW","to":"RGBW","rect":[146.0,311.0,286.0,376.0]},{"element":"HSI","to":"HSI","rect":[146.0,380.0,286.0,445.0]},{"element":"GEL","to":"GEL","rect":[146.0,449.0,286.0,514.0]},{"element":"XY","to":"XY","rect":[146.0,518.0,286.0,583.0]},{"element":"DMX","to":"DMX","rect":[146.0,725.0,286.0,790.0]}],"rows":[]},"DMX":{"links":[{"element":"CCT","to":"CCT","rect":[146.0,242.0,286.0,307.0]},{"element":"RGBW","to":"RGBW","rect":[146.0,311.0,286.0,376.0]},{"element":"HSI","to":"HSI","rect":[146.0,380.0,286.0,445.0]},{"element":"GEL","to":"GEL","rect":[146.0,449.0,286.0,514.0]},{"element":"XY","to":"XY","rect":[146.0,518.0,286.0,583.0]},{"element":"EFFECTS","to":"EFFECTS","rect":[146.0,587.0,286.0,652.0]}],"rows":[]}},"glyphs":{"0":[45,72,0.0,0.0],"1":[45,72,0.0,0.0],"2":[45,72,0.0,0.0],"3":[45,72,0.0,0.0],"4":[45,72,0.0,0.0],"5":[45,72,0.0,0.0],"6":[45,72,0.0,0.0],"7":[45,72,0.0,0.0],"8":[45,72,0.0,0.0],"9":[45,72,0.0,0.0],"size":56,"dot":[6,72,0.0,0.0],"pct":[45,72,0.0,0.0],"K":[45,72,0.0,0.0],"plus":[45,72,0.0,0.0],"minus":[45,72,0.0,0.0]},"sizes":{"cct-bg":[960,1920,2902],"cct-full":[960,1920,2902],"xy":[960,1920,2902],"hsi-bg":[960,1920,2902],"hsi-full":[960,1920,2902],"rgbw-bg":[960,1920,2902],"rgbw-full":[960,1920,2902],"gel":[960,1920,2902],"effects":[960,1920,2902],"dmx":[960,1920,2902]},"zoneRight":1284.0};
+  var W = D.size[0], H = D.size[1], TW = 612;
+  var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var pct = function (f) { return (f * 100).toFixed(1) + '%'; };
+  var FMT = {
+    CCT: [pct, function (f) { return (Math.round((3000 + f * 3000) / 50) * 50) + 'K'; }, function (f) { var v = Math.round((f - .5) * 200); return (v > 0 ? '+' : '') + v + '%'; }],
+    HSI: [pct, function (f) { return String(Math.round(f * 360)); }, function (f) { return Math.round(f * 100) + '%'; }],
+    RGBW: [pct, pct, pct, pct],
+  };
+  var LABEL = { CCT: 'Colour temperature: intensity, kelvin and green / magenta', HSI: 'Hue, saturation and intensity', RGBW: 'Every LED channel on its own slider',
+    XY: 'An XY chart for an exact colour', GEL: 'LEE and Rosco filter libraries', EFFECTS: 'More than 40 effects, grouped by category', DMX: 'Address, channel mode and wireless link' };
+  var GLYPH = { '.': 'dot', '%': 'pct', '+': 'plus', '-': 'minus' };
+  var glyphImgs = Object.keys(D.glyphs).filter(function (k) { return k !== 'size'; }).map(function (k) { var i = new Image(); i.src = 'img/glyph-' + k + '.png'; return i; });   // preloaded: digits appear mid-drag
+  var stage = document.getElementById('stage'), cursor = document.getElementById('cursor'), caption = document.getElementById('caption'), playBtn = document.getElementById('play');
+  var u = 1, current = null, modes = {}, playing = !still, timer = null, cur = { x: 900, y: 600 }, loop = 0;
+  var ORDER = ['CCT', 'HSI', 'RGBW', 'XY', 'GEL', 'EFFECTS', 'DMX'];
+  var dots = ORDER.map(function (m) {
+    var d = document.createElement('button'); d.type = 'button'; d.className = 'dot'; d.setAttribute('aria-label', m + ' mode');
+    d.addEventListener('click', function () { pause(); show(m); });
+    document.getElementById('dots').appendChild(d); return d;
+  });
+  var px = function (v) { return 'calc(var(--u) * ' + v + ')'; };
+  var place = function (el, x, y, w, h) { el.style.left = px(x); el.style.top = px(y); if (w != null) el.style.width = px(w); if (h != null) el.style.height = px(h); };
+  var srcset = function (stem) { return D.sizes[stem].map(function (w) { return 'img/' + stem + '-' + w + '.avif ' + w + 'w'; }).join(', '); };
+  var fallback = function (stem) { var s = D.sizes[stem]; return 'img/' + stem + '-' + s[Math.min(1, s.length - 1)] + '.avif'; };
+
+  Object.keys(D.modes).forEach(function (m) {
+    var md = D.modes[m], el = document.createElement('div'), slid = md.rows.length > 0, key = m.toLowerCase();
+    el.className = 'mode'; el.setAttribute('aria-hidden', 'true');
+    var img = document.createElement('img');
+    img.alt = m + ' mode of the Senna Masterpiece control panel'; img.decoding = 'async'; img.sizes = '100vw';
+    img.dataset.srcset = srcset(slid ? key + '-bg' : key); img.dataset.src = fallback(slid ? key + '-bg' : key);
+    el.appendChild(img);
+    var rows = md.rows.map(function (r, i) {
+      var fill = document.createElement('div'); fill.className = 'fill';
+      place(fill, r.track[0], r.track[1], null, r.track[3]);
+      fill.dataset.bg = fallback(key + '-full');
+      fill.style.backgroundSize = px(W) + ' ' + px(H); fill.style.backgroundPosition = px(-r.track[0]) + ' ' + px(-r.track[1]);
+      var handle = document.createElement('div'); handle.className = 'handle'; place(handle, 0, r.track[1], null, r.track[3]);
+      var read = document.createElement('div'); read.className = 'read';
+      var gs = r.read.size / D.glyphs.size, g0 = D.glyphs['0'];   // glyph PNGs carry the text effects' bleed (g[2], g[3])
+      place(read, r.read.right - 400, r.read.y + (r.read.h - g0[1] * gs) / 2 - g0[3] * gs, 400, (g0[1] + 2 * g0[3]) * gs);
+      var zone = document.createElement('div'); zone.className = 'zone'; zone.tabIndex = 0; zone.setAttribute('role', 'slider');
+      zone.setAttribute('aria-label', m + ' slider ' + (i + 1)); zone.setAttribute('aria-valuemin', '0'); zone.setAttribute('aria-valuemax', '100');
+      place(zone, r.track[0], r.track[1], D.zoneRight - r.track[0], r.track[3]);
+      el.appendChild(fill); el.appendChild(handle); el.appendChild(read); el.appendChild(zone);
+      var row = { r: r, fill: fill, handle: handle, read: read, zone: zone, f: r.frac, fmt: FMT[m][i] };
+      var fromX = function (cx) { var b = stage.getBoundingClientRect(); return Math.max(.02, Math.min(1, ((cx - b.left) / u - r.track[0]) / TW)); };
+      zone.addEventListener('pointerdown', function (e) { pause(); zone.setPointerCapture(e.pointerId); set(row, fromX(e.clientX)); e.preventDefault(); });
+      zone.addEventListener('pointermove', function (e) { if (zone.hasPointerCapture(e.pointerId)) set(row, fromX(e.clientX)); });
+      zone.addEventListener('keydown', function (e) {
+        var d = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? .02 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -.02 : 0;
+        if (d) { e.preventDefault(); pause(); set(row, Math.max(.02, Math.min(1, row.f + d))); }
+      });
+      return row;
+    });
+    md.links.forEach(function (l) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'nav'; b.setAttribute('aria-label', l.element + ' mode');
+      place(b, l.rect[0], l.rect[1], l.rect[2] - l.rect[0], l.rect[3] - l.rect[1]);
+      b.addEventListener('click', function () { pause(); show(l.to); });
+      el.appendChild(b);
+    });
+    stage.insertBefore(el, cursor);
+    modes[m] = { el: el, img: img, rows: rows, key: key, slid: slid };
+    rows.forEach(function (row) { set(row, row.f); });
+  });
+
+  function set(row, f) {
+    row.f = f;
+    row.fill.style.width = px(TW * f);
+    row.handle.style.left = px(row.r.track[0] + TW * f);
+    var text = row.fmt(f), s = row.r.read.size / D.glyphs.size, kids = row.read.children;
+    // the digit images are reused and only swapped when a character changes, so nothing blinks while dragging
+    while (kids.length < text.length) { var im = document.createElement('img'); im.alt = ''; row.read.appendChild(im); }
+    while (kids.length > text.length) row.read.removeChild(row.read.firstChild);
+    for (var i = 0; i < text.length; i++) {
+      var n = GLYPH[text[i]] || text[i], g = D.glyphs[n], el = kids[i];
+      if (!g || el.dataset.c === n) continue;
+      el.dataset.c = n; el.src = 'img/glyph-' + n + '.png';
+      el.style.width = px((g[0] + 2 * g[2]) * s); el.style.margin = '0 ' + px(-g[2] * s);
+    }
+    row.zone.setAttribute('aria-valuenow', Math.round(f * 100)); row.zone.setAttribute('aria-valuetext', text);
+  }
+  function loadMode(m) {
+    var md = modes[m];
+    if (!md.img.srcset) { md.img.srcset = md.img.dataset.srcset; md.img.src = md.img.dataset.src; }
+    md.rows.forEach(function (row) { if (!row.fill.style.backgroundImage) row.fill.style.backgroundImage = 'url(' + row.fill.dataset.bg + ')'; });
+  }
+  function show(m) {
+    if (current === m) return;
+    loadMode(m);
+    Object.keys(modes).forEach(function (k) { modes[k].el.classList.toggle('on', k === m); modes[k].el.setAttribute('aria-hidden', k === m ? 'false' : 'true'); });
+    current = m;
+    var k = ORDER.indexOf(m);
+    caption.innerHTML = '<b>' + (k + 1) + ' / ' + ORDER.length + ' · ' + m + '</b> &nbsp;' + LABEL[m];
+    dots.forEach(function (d, i) { d.classList.toggle('on', i === k); d.setAttribute('aria-current', i === k ? 'step' : 'false'); });
+  }
+
+  // ---- the demo: a cursor drags each slider, then opens the next mode ----------------------------
+  var frame = function (fn) { requestAnimationFrame(fn); };
+  function moveTo(x, y, ms, done) {
+    var x0 = cur.x, y0 = cur.y, t0 = performance.now();
+    (function step(now) {
+      var p = Math.min(1, (now - t0) / ms), e = p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+      cur = { x: x0 + (x - x0) * e, y: y0 + (y - y0) * e };
+      cursor.style.transform = 'translate(' + cur.x * u + 'px,' + cur.y * u + 'px)';
+      if (p < 1) frame(step); else done();
+    })(t0);
+  }
+  function drag(row, to, ms, done) {
+    var r = row.r, y = r.track[1] + r.track[3] / 2, from = row.f;
+    moveTo(r.track[0] + TW * from, y, 650, function () {
+      if (!playing) return;
+      cursor.classList.add('down');
+      var t0 = performance.now();
+      (function step(now) {
+        if (!playing) return;
+        var p = Math.min(1, (now - t0) / ms), e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2, f = from + (to - from) * e;
+        set(row, f); cur = { x: r.track[0] + TW * f, y: y };
+        cursor.style.transform = 'translate(' + cur.x * u + 'px,' + cur.y * u + 'px)';
+        if (p < 1) frame(step); else { cursor.classList.remove('down'); timer = setTimeout(done, 250); }
+      })(t0);
+    });
+  }
+  function click(m, done) {
+    var l = D.modes[current].links.filter(function (x) { return x.to === m; })[0];
+    if (!l) { show(m); return done(); }
+    moveTo((l.rect[0] + l.rect[2]) / 2, (l.rect[1] + l.rect[3]) / 2, 700, function () {
+      if (!playing) return;
+      cursor.classList.add('down');
+      timer = setTimeout(function () { cursor.classList.remove('down'); show(m); timer = setTimeout(done, 500); }, 160);
+    });
+  }
+  loop = 0;
+  function demo(i) {
+    if (!playing) return;
+    var m = ORDER[i % ORDER.length];
+    var next = function () { demo(i + 1); };
+    click(m, function () {
+      var md = modes[m];
+      if (!md.slid) { timer = setTimeout(next, 1600); return; }
+      (function each(k) {
+        if (!playing) return;
+        if (k >= md.rows.length) { timer = setTimeout(next, 700); return; }
+        var row = md.rows[k], to = row.f < .55 ? .7 + .2 * ((k + loop) % 2) : .2 + .15 * ((k + loop) % 2);
+        drag(row, to, 1100, function () { each(k + 1); });
+      })(0);
+      if (m === 'DMX') loop++;
+    });
+  }
+  function setPlayLabel() {
+    playBtn.innerHTML = playing
+      ? '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg><span>Pause demo</span>'
+      : '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.2v11.6c0 .6.7 1 1.2.7l9-5.8c.5-.3.5-1 0-1.3l-9-5.9C4.7 1.2 4 1.6 4 2.2z"/></svg><span>Play demo</span>';
+  }
+  function pause() { if (!playing) return; playing = false; clearTimeout(timer); cursor.classList.remove('on', 'down'); setPlayLabel(); }
+  function play() { playing = true; setPlayLabel(); cursor.classList.add('on'); demo(ORDER.indexOf(current)); }
+  playBtn.addEventListener('click', function () { playing ? pause() : play(); });
+  document.getElementById('restart').addEventListener('click', function () {   // first mode, sliders back where they started
+    var was = playing; pause();
+    Object.keys(modes).forEach(function (k) { modes[k].rows.forEach(function (row) { set(row, row.r.frac); }); });
+    loop = 0; show('CCT'); if (was || !still) play();
+  });
+  var setU = function () { u = stage.clientWidth / W; stage.style.setProperty('--u', u + 'px'); };
+  window.addEventListener('resize', setU);
+  setU(); setPlayLabel();
+  show('CCT');
+  // preload the other modes after the first one
+  setTimeout(function () { ORDER.forEach(loadMode); }, 600);
+  if (playing) { cursor.classList.add('on'); cursor.style.transform = 'translate(' + cur.x * u + 'px,' + cur.y * u + 'px)'; timer = setTimeout(function () { demo(0); }, 900); }
+})();
+</script>
+</body>
+</html>
