@@ -108,10 +108,22 @@
       current = i;
       play();
     };
+    // a slide may only fade in once its image is there (on a slow connection the next one can still be
+    // downloading after 5 s: the current slide stays until it has arrived)
+    var imgOf = function (i) { return $('img', slides[(i + slides.length) % slides.length]); };
+    var ready = function (i) { var img = imgOf(i); return !img || (img.complete && img.naturalWidth > 0); };
     var play = function () {
       clearTimeout(timer);
       if (still) return;
-      timer = setTimeout(function () { if (document.hidden || held || !view.visible) play(); else show(current + 1); }, 5000);
+      timer = setTimeout(function () {
+        if (document.hidden || held || !view.visible) return play();
+        var next = current + 1;
+        prep(next);
+        if (ready(next)) return show(next);
+        var img = imgOf(next), go = function () { img.removeEventListener('load', go); if (!held) show(next); else play(); };
+        img.addEventListener('load', go);
+        timer = setTimeout(function () { img.removeEventListener('load', go); play(); }, 5000);   // still not there: check again later
+      }, 5000);
     };
     var area = root.closest('.page-intro') || root;
     area.addEventListener('mouseenter', function () { held = true; });
@@ -121,9 +133,10 @@
     var prev = $('.page-intro__btn--prev'), next = $('.page-intro__btn--next');
     if (prev) prev.addEventListener('click', function () { show(current - 1); });
     if (next) next.addEventListener('click', function () { show(current + 1); });
-    // the next slide's image only after the page has loaded, so it never competes with the first one
-    var later = function () { setTimeout(function () { prep(1); }, 1500); };
-    if (document.readyState === 'complete') later(); else window.addEventListener('load', later);
+    // the next slide's image as soon as the first one is in (not after the whole page), so it is ready in time
+    var first = imgOf(0), later = function () { prep(1); };
+    if (!first || (first.complete && first.naturalWidth)) later();
+    else { first.addEventListener('load', later); first.addEventListener('error', later); setTimeout(later, 2500); }
     play();
   }
 
