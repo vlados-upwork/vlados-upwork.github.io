@@ -96,7 +96,11 @@
     if (slides.length < 2) return;
     var current = 0, timer = null, held = false;
     var view = onScreen(root);
-    var prep = function (i) { loadImages(slides[(i + slides.length) % slides.length]); };
+    var prep = function (i) {
+      var slide = slides[(i + slides.length) % slides.length];
+      $$('img', slide).forEach(function (img) { img.decoding = 'sync'; });   // decode right away, not when first painted
+      loadImages(slide);
+    };
     var show = function (i) {
       i = (i + slides.length) % slides.length;
       prep(i); prep(i + 1);

@@ -100,8 +100,10 @@
 /* home slider: slides stacked in one grid cell, the active one fades in (slick's fade mode) */
 .project-slider .slick-track { display: grid; width: 100%; }
 .project-slider .slick-track::before, .project-slider .slick-track::after { display: none; }
-.project-slider .slick-slide { grid-area: 1 / 1; float: none; width: 100%; position: relative; opacity: 0; visibility: hidden; transition: opacity 500ms, visibility 500ms; }
-.project-slider .slick-slide.slick-active { opacity: 1; visibility: visible; z-index: 1; }
+/* inactive slides are only transparent (not visibility: hidden): an image that loads while its slide is hidden
+   was sometimes never painted when the slide faded in (2026-10-19) */
+.project-slider .slick-slide { grid-area: 1 / 1; float: none; width: 100%; position: relative; opacity: 0; pointer-events: none; transition: opacity 500ms; }
+.project-slider .slick-slide.slick-active { opacity: 1; pointer-events: auto; z-index: 1; }
 .project-slider .project-slide { display: block; width: 100%; }
 
 /* images that wait in site.js's queue stay invisible, then fade in once decoded (cards fade their whole preview) */
