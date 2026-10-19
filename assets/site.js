@@ -144,6 +144,104 @@
     play();
   }
 
+  // ---- client focus (2026-10-19): a link like /#branding or /work/#product puts the matching projects first
+  // in the home carousel, the home cards, the Work page and the Related cards of every case study. The choice is
+  // kept for the tab (sessionStorage), so it stays while the client clicks around; #all goes back to normal.
+  var FOCUS = {
+    product: ['eventwise', 'portaone', 'agent-lifecycle', 'dasera', 'threatnote', 'partyshare', 'ambiente', 'senna'],
+    aiproduct: ['agent-lifecycle', 'threatnote', 'scaled-website', 'brand-guide', 'whitepaper', 'dasera'],
+    mobile: ['partyshare', 'ambiente', 'senna', 'eventwise'],
+    iot: ['ambiente', 'senna'],
+    landing: ['scaled-website', 'agallas', 'partyshare', 'brand-guide'],
+    wordpress: ['agallas', 'scaled-website'],
+    webflow: ['scaled-website', 'agallas'],
+    ecommerce: ['partyshare', 'agallas', 'scaled-website', 'eventwise'],
+    print: ['whitepaper', 'kobiton', 'brand-guide', 'backed', 'selfsia'],
+    branding: ['selfsia', 'backed', 'brand-guide', 'kobiton', 'whitepaper'],
+    security: ['threatnote', 'dasera'],
+    fintech: ['eventwise', 'agallas', 'backed', 'portaone'],
+    designsystem: ['threatnote', 'brand-guide', 'kobiton', 'portaone']
+  };
+  var ALIAS = { b2b: 'product', saas: 'product', ux: 'product', dashboard: 'product', ai: 'aiproduct', app: 'mobile', apps: 'mobile',
+    hardware: 'iot', web: 'landing', website: 'landing', websites: 'landing', marketplace: 'ecommerce', shop: 'ecommerce',
+    brand: 'branding', identity: 'branding', logo: 'branding', editorial: 'print', cyber: 'security', finance: 'fintech', 'design-system': 'designsystem' };
+  function focusKey() {
+    var h = (location.hash || '').slice(1).toLowerCase().replace(/[^a-z0-9-]/g, ''), k = ALIAS[h] || h, s = null;
+    try {
+      if (h === 'all') { sessionStorage.removeItem('focus'); return null; }
+      if (FOCUS[k]) sessionStorage.setItem('focus', k);
+      s = sessionStorage.getItem('focus');
+    } catch (e) {}
+    return FOCUS[k] ? k : (FOCUS[s] ? s : null);
+  }
+  var slugOf = function (el) { var a = el.querySelector('a[href*="project/"]'); var m = a && a.getAttribute('href').match(/project\/([^/]+)\//); return m ? m[1] : ''; };
+  var ordered = function (els, list) {
+    return els.map(function (el, i) { var k = list.indexOf(slugOf(el)); return { el: el, k: k < 0 ? 1000 + i : k }; })
+      .sort(function (a, b) { return a.k - b.k; }).map(function (o) { return o.el; });
+  };
+  function focus() {
+    window.addEventListener('hashchange', function () {   // a new #tag on the same page: start again in that order
+      var h = location.hash.slice(1).toLowerCase(); if (h === 'all' || FOCUS[ALIAS[h] || h]) location.reload();
+    });
+    var key = focusKey();
+    var done = function () { document.documentElement.classList.remove('focusing'); };
+    if (!key) return done();
+    var list = FOCUS[key];
+    // home carousel: reorder the slides, renumber the counters, load the new first slide right away
+    var track = $('.project-slider .slick-track');
+    if (track) {
+      var slides = ordered($$('.slick-slide', track), list);
+      slides.forEach(function (s, i) {
+        track.appendChild(s); s.setAttribute('data-index', i);
+        var on = i === 0; s.classList.toggle('slick-active', on); s.classList.toggle('slick-current', on);
+        if (on) s.removeAttribute('aria-hidden'); else s.setAttribute('aria-hidden', 'true');
+        var c = $('.page-intro__project-counter > div', s); if (c) c.textContent = i + 1;
+      });
+      loadImages(slides[0]); var im = $('img', slides[0]); if (im) im.setAttribute('fetchpriority', 'high');
+    }
+    // Work page: all cards, same split between the masonry header and body
+    var header = $('.work-section .project-list__masonry-header'), body = $('.work-section .project-list__masonry-body');
+    if (header && body) {
+      var items = $$('.project-list__item', header).concat($$('.project-list__item', body)), n = $$('.project-list__item', header).length;
+      ordered(items, list).forEach(function (it, i) { (i < n ? header : body).appendChild(it); });
+      firstCard(header);
+      done(); return;
+    }
+    // home cards and Related cards: only a few are on the page, so the ordered ones come from the Work page
+    var home = $('.work-section .project-list__masonry-header'), related = $('.project-related .project-list__body');
+    var box = home || related;
+    var work = $('a[href$="work/index.html"]');
+    if (!box || !work || !window.fetch) return done();
+    var count = $$('.project-list__item', box).length, prefix = work.getAttribute('href').replace(/work\/index\.html$/, '');
+    var here = (location.pathname.match(/\/project\/([^/]+)\//) || [])[1];
+    fetch(work.href).then(function (r) { return r.text(); }).then(function (html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var all = ordered($$('.work-section .project-list__item', doc), list);
+      if (here) { var at = all.map(slugOf).indexOf(here); all = at < 0 ? all : all.slice(at + 1).concat(all.slice(0, at)); }
+      var pick = all.slice(0, count), old = $$('.project-list__item', box);
+      pick.forEach(function (it, i) {
+        $$('[href], [src], [srcset], [data-src], [data-srcset]', it).forEach(function (el) {
+          ['href', 'src', 'srcset', 'data-src', 'data-srcset'].forEach(function (a) { var v = el.getAttribute(a); if (v) el.setAttribute(a, v.replace(/(^|, )\.\.\//g, '$1' + prefix)); });
+        });
+        var node = document.importNode(it, true);
+        if (old[i]) { node.className = old[i].className; old[i].replaceWith(node); } else box.appendChild(node);
+        var img = $('.project-card__image', node), card = $('.project-card__preview', node);
+        if (img) { img.removeAttribute('fetchpriority'); loadImages(img.closest('picture') || img);
+          var shown = function () { if (card) card.classList.add('project-card__preview--loaded'); };
+          if (img.complete && img.naturalWidth) shown(); else { img.addEventListener('load', shown); img.addEventListener('error', shown); } }
+        var art = $('article', node), was = old[i] && $('article', old[i]);
+        if (art && was) art.className = was.className;
+      });
+    }).catch(function () {}).then(done);
+    done();   // the cards on the page stay visible while the ordered ones load
+  }
+  function firstCard(header) {
+    $$('.project-list__card--first', header).forEach(function (a) { a.classList.remove('project-list__card--first'); });
+    var a = $('.project-list__item article', header); if (!a) return;
+    a.classList.add('project-list__card--first');
+    var img = $('.project-card__image', a); if (img) { img.setAttribute('fetchpriority', 'high'); loadImages(img.closest('picture') || img); }
+  }
+
   // ---- menu overlay -------------------------------------------------------------------------------
   function menu() {
     var el = $('.toggle-menu');
@@ -354,6 +452,6 @@
     }, { passive: true });
   }
 
-  function start() { images(); slider(); menu(); accordions(); industries(); cycling(); contact(); header(); }
+  function start() { focus(); images(); slider(); menu(); accordions(); industries(); cycling(); contact(); header(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();

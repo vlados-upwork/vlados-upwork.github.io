@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive, noimageindex">
+<title>PartyShare prototype</title>
+<meta name="description" content="Clickable prototype of PartyShare: a renter switches to the vendor side and lists a new item, step by step.">
+<link rel="icon" href="../../favicon.ico">
+<script>if (/[?&]embed\b/.test(location.search)) document.documentElement.className = 'embed';</script>
+<style>
+  @font-face { font-family: 'SF Pro Display'; font-weight: 400; font-display: swap; src: url(../../fonts/SFProDisplay-Regular.75a6f5d.woff2) format('woff2'); }
+  @font-face { font-family: 'SF Pro Display'; font-weight: 500; font-display: swap; src: url(../../fonts/SFProDisplay-Medium.48749ab.woff2) format('woff2'); }
+  :root { --ar: 1600 / 1000; --ink: #111; --muted: #6b6b6b; --accent: #5b2a86; --bg: #e9e8e5; --panel: #fff; --app: #f4f3f7; --u: 0.5px; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 400 15px/1.3 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 16px; }
+
+  /* the stage is one 1920 x 1080 viewport of the app; taller screens (the dashboard) scroll inside it.
+     --u is one screen pixel in CSS pixels */
+  .stage { position: relative; width: min(100%, calc((100vh - 96px) * var(--ar))); aspect-ratio: var(--ar); border-radius: 0; overflow: hidden; background: var(--app); box-shadow: 0 20px 60px rgba(0, 0, 0, .14), 0 0 0 1px rgba(0, 0, 0, .06); user-select: none; -webkit-tap-highlight-color: transparent; }
+  .scroller { position: absolute; left: 0; top: 0; width: 100%; will-change: transform; transition: transform .45s cubic-bezier(.4, 0, .2, 1); }
+  .screen { position: absolute; left: 0; top: 0; width: 100%; visibility: hidden; pointer-events: none; }
+  .screen.on { visibility: visible; }
+  .layer { position: absolute; left: 0; top: 0; width: 100%; height: 0; overflow: visible; pointer-events: none; }
+
+  /* sprites: a piece of a screen shown at its own place (or moved) */
+  .spr { position: absolute; background-repeat: no-repeat; will-change: transform, opacity; }
+  .fill { position: absolute; }
+
+  /* hover targets: a sprite of the element itself, so at rest nothing changes */
+  .tg { position: absolute; appearance: none; border: 0; padding: 0; background-color: transparent; background-repeat: no-repeat; pointer-events: auto; cursor: pointer; transition: transform .16s ease; }
+  .tg::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: transparent; transition: background-color .16s ease; pointer-events: none; }
+  .tg.btn.hover::after, .tg.icon.hover::after { background: rgba(40, 10, 70, .07); }
+  .tg.row.hover::after { background: rgba(91, 42, 134, .05); }
+  .tg.pri.hover::after { background: rgba(255, 255, 255, .16); }
+  .tg.link.hover { transform: translateX(calc(var(--u) * 2)); }
+  .tg.bg { cursor: default; }
+  .tg.press { transform: scale(.965); transition-duration: .08s; }
+  .tg.row.press, .tg.bg.press { transform: none; }
+  .tg:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .tg.hint { animation: hint .9s ease; }
+  @keyframes hint { 0%, 100% { box-shadow: none; } 30% { box-shadow: 0 0 0 calc(var(--u) * 4) rgba(91, 42, 134, .5); } }
+
+  /* the demo cursor and its click ripple (in stage space, not scrolled) */
+  .cursor { position: absolute; left: 0; top: 0; width: calc(var(--u) * 40); pointer-events: none; z-index: 5; opacity: 0; transition: opacity .3s; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .35)); will-change: transform; }
+  .cursor.on { opacity: 1; }
+  .cursor svg { display: block; width: 100%; height: auto; transition: transform .1s ease; transform-origin: 10% 10%; }
+  .cursor.down svg { transform: scale(.82); }
+  .ripple { position: absolute; width: calc(var(--u) * 70); height: calc(var(--u) * 70); margin: calc(var(--u) * -35) 0 0 calc(var(--u) * -35); border-radius: 50%; background: rgba(91, 42, 134, .3); pointer-events: none; z-index: 4; animation: ripple .5s ease-out forwards; }
+  @keyframes ripple { from { transform: scale(.2); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+
+  .loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; background: var(--app); transition: opacity .3s; pointer-events: none; z-index: 6; }
+  .loading.done { opacity: 0; }
+
+  /* controls */
+  .bar { display: flex; align-items: center; gap: 14px; width: min(100%, calc((100vh - 96px) * var(--ar))); min-height: 44px; }
+  .btn-ui { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--panel); color: var(--ink); font: inherit; font-weight: 500; cursor: pointer; box-shadow: 0 1px 2px rgba(0, 0, 0, .08); }
+  .btn-ui:hover { background: #f6f6f6; }
+  .btn-ui:focus-visible, .dot:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .btn-ui svg { width: 14px; height: 14px; }
+  .btn-ui--icon { width: 40px; padding: 0; justify-content: center; }
+  .caption { flex: 1; min-width: 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .caption b { color: var(--ink); font-weight: 500; }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%; background: rgba(0, 0, 0, .18); cursor: pointer; }
+  .dot.on { background: var(--accent); }
+  @media (max-width: 700px) { .dots { display: none; } .bar { gap: 8px; } .btn-ui--label span { display: none; } }
+
+  /* ?embed: inside a case study (iframe height = width * 9 / 16 + 58 px): no page background, full width */
+  html.embed body { background: transparent; padding: 0; justify-content: flex-start; }
+  html.embed .stage, html.embed .bar { width: 100%; }
+  html.embed .stage { box-shadow: 0 0 0 1px rgba(0, 0, 0, .06); }
+  html.embed .bar { min-height: 44px; height: 44px; }
+  .scroller { transition-duration: 1s; transition-timing-function: cubic-bezier(.45, 0, .2, 1); }
+  .ripple { background: rgba(255, 136, 1, .3); }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage" aria-label="PartyShare prototype" role="region">
+    <div class="scroller" id="scroller">
+      <div class="layer" id="amb"></div>
+      <div class="layer" id="fx"></div>
+      <div class="layer" id="targets"></div>
+    </div>
+    <div class="cursor" id="cursor" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 2.5l15.5 10.2-6.9 1.3 4 7.6-3.1 1.6-4-7.6L4.6 20.3z" fill="#111" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg></div>
+    <div class="loading" id="loading">Loading prototype</div>
+  </div>
+  <div class="bar">
+    <button class="btn-ui btn-ui--label" id="play" type="button"></button>
+    <button class="btn-ui btn-ui--icon" id="restart" type="button" aria-label="Start over"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2.5 8a5.5 5.5 0 1 0 1.7-4"/><path d="M2.5 2v3.5H6"/></svg></button>
+    <div class="caption" id="caption" aria-live="polite"></div>
+    <div class="dots" id="dots"></div>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+  var D = {"w":1600,"vh":1000,"scrollMs":1100,"app":"#ffffff","what":"PartyShare marketplace","drawer":{},"figma":{"name":"partyshare-listing","exportScale":2,"screens":[{"file":"01-renter-dashboard.png","figma":"1067:122607","name":"listing / 01 Renter dashboard","size":[1600,2145],"links":[{"element":"Vendor","to":"02-vendor-dashboard","rect":[806,175,894,213],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK"}]},{"file":"02-vendor-dashboard.png","figma":"1067:126377","name":"listing / 02 Vendor dashboard","size":[1600,1964],"links":[{"element":"Create Listing","to":"03-listing-basics","rect":[1351,173,1463,215],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK"}]},{"file":"03-listing-basics.png","figma":"1067:130872","name":"listing / 03 Listing basics","size":[1600,2569],"links":[{"element":"Next Step","to":"04-fulfilment","rect":[1331,173,1463,215],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK"}]},{"file":"04-fulfilment.png","figma":"1067:131156","name":"listing / 04 Fulfilment","size":[1600,1050],"links":[{"element":"Next Step","to":"05-specs","rect":[1331,173,1463,215],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK"}]},{"file":"05-specs.png","figma":"1067:131403","name":"listing / 05 Specs","size":[1600,1264],"links":[{"element":"Next Step","to":"06-rules","rect":[1331,173,1463,215],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK"}]},{"file":"06-rules.png","figma":"1067:131641","name":"listing / 06 Rules","size":[1600,1431],"links":[{"element":"Next Step","to":"07-listing-fees","rect":[1331,173,1463,215],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK"}]},{"file":"07-listing-fees.png","figma":"1067:131882","name":"listing / 07 Listing fees","size":[1600,743],"links":[{"element":"Next Step","to":"08-review-and-publish","rect":[1331,173,1463,215],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK"}]},{"file":"08-review-and-publish.png","figma":"1067:132117","name":"listing / 08 Review & publish","size":[1600,2026],"links":[{"element":"Publish","to":"09-inventory","rect":[1345,173,1463,215],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK"}]},{"file":"09-inventory.png","figma":"1067:132635","name":"listing / 09 Inventory","size":[1600,1361],"links":[{"element":"Renter","to":"01-renter-dashboard","rect":[722,175,810,213],"transition":"DISSOLVE","ms":250,"trigger":"ON_CLICK"}]}]},"sizes":{"01-renter-dashboard":[960,1920,3200],"02-vendor-dashboard":[960,1920,3200],"03-listing-basics":[960,1920,3200],"04-fulfilment":[960,1920,3200],"05-specs":[960,1920,3200],"06-rules":[960,1920,3200],"07-listing-fees":[960,1920,3200],"08-review-and-publish":[960,1920,3200],"09-inventory":[960,1920,3200]},"steps":[{"id":"01-renter-dashboard","part":"Renter dashboard","label":"The same account rents and lists: switch to Vendor","demo":"Vendor"},{"id":"02-vendor-dashboard","part":"Vendor dashboard","label":"Bookings, inventory and earnings: create a listing","demo":"Create Listing"},{"id":"03-listing-basics","part":"Create listing","label":"Title, description, category, photos and price","demo":"Next Step"},{"id":"04-fulfilment","part":"Create listing","label":"Pickup, delivery zones and fees","demo":"Next Step"},{"id":"05-specs","part":"Create listing","label":"Dimensions, materials and what is included","demo":"Next Step"},{"id":"06-rules","part":"Create listing","label":"Rules the renter agrees to","demo":"Next Step"},{"id":"07-listing-fees","part":"Create listing","label":"Deposit, cleaning and damage waiver","demo":"Next Step"},{"id":"08-review-and-publish","part":"Review & publish","label":"The listing as renters will see it","demo":"Publish"},{"id":"09-inventory","part":"Inventory","label":"Live in the store, next to the other items","demo":"Renter"}]};
+  var W = D.w, VH = D.vh, READ = 1500, APP = D.app;
+  var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var EASE = 'cubic-bezier(.4, 0, .2, 1)', OUT = 'cubic-bezier(.16, 1, .3, 1)', POP = 'cubic-bezier(.2, 1.35, .4, 1)';
+
+  // Every prototype link of the Figma flow (hotspots on each frame), from .build/figma-src/flows/<name>/links.json
+  var FIGMA = D.figma;
+  var STEPS = D.steps;
+  var INDEX = {}; STEPS.forEach(function (s, i) { INDEX[s.id] = i; });
+  FIGMA.screens.forEach(function (sc) {
+    var s = STEPS[INDEX[sc.file.replace(/\.png$/, '')]];
+    s.h = sc.size[1]; s.alt = sc.name.replace(/^.*— /, '') + ' screen of the ' + D.what;
+    // full-screen backdrops (close a drawer or a dialog) go first, so the links on top of them win
+    s.links = sc.links.slice().sort(function (a, b) { return (/close\)$/i.test(b.element)) - (/close\)$/i.test(a.element)); });
+  });
+  var demoOf = function (s) { return Array.isArray(s.demo) ? s.demo[((s.visit || 1) - 1) % s.demo.length] : s.demo; };
+  var kindOf = function (l) {
+    if (/\((close)\)$/i.test(l.element)) return 'bg';
+    if (/^(Approve|Send|Save|Add new|New group member|Search bar)/.test(l.element)) return 'pri';
+    if (/(tab|Chip|Cancel|Back|Close)/i.test(l.element)) return 'btn';
+    if (/(line|field|Artist|row|list)/i.test(l.element)) return 'row';
+    if (/\(nav\)|Menu/.test(l.element)) return 'icon';
+    return 'link';
+  };
+  // a drawer slides in from the right over the page it was opened from; between drawer states it just dissolves
+  var DIM = 'rgba(15, 23, 51, .35)';
+  var TRANS = {};
+  var dissolve = function (x) {
+    var dr = D.drawer[STEPS[x.B].id], wasDr = D.drawer[STEPS[x.A].id];
+    if (dr && !wasDr) {
+      x.a(x.spr(x.B, [0, 0, dr[0], VH]), [{ opacity: 0 }, { opacity: 1 }], 280, 0, EASE);
+      x.a(x.spr(x.B, [dr[0], 0, W, VH]), [{ transform: x.tx(W - dr[0]) }, { transform: 'none' }], 460, 40, OUT);
+      return 520;
+    }
+    if (wasDr && !dr) {
+      x.a(x.spr(x.B, [0, 0, W, VH]), [{ opacity: 0 }, { opacity: 1 }], 260, 60, EASE);
+      x.a(x.spr(x.A, [dr ? 0 : wasDr[0], 0, W, VH]), [{ transform: 'none' }, { transform: x.tx(W - wasDr[0]) }], 320, 0, EASE);
+      return 380;
+    }
+    x.a(x.spr(x.B, [0, scrollY, W, scrollY + VH]), [{ opacity: 0 }, { opacity: 1 }], 220, 0, EASE);   // the visible part
+    return 260;
+  };
+
+  // ---- machinery ----------------------------------------------------------------------------------
+  var stage = document.getElementById('stage'), scroller = document.getElementById('scroller');
+  var fx = document.getElementById('fx'), amb = document.getElementById('amb'), tgs = document.getElementById('targets');
+  var cursor = document.getElementById('cursor'), playBtn = document.getElementById('play'), caption = document.getElementById('caption'), dotsEl = document.getElementById('dots');
+  var current = -1, playing = !still, busy = false, timer = null, visible = true, cur = { x: W * .78, y: VH * .83 }, u = 1, scrollY = 0;
+  var frame = function (fn) { var done = false, go = function () { if (!done) { done = true; fn(performance.now()); } }; requestAnimationFrame(go); setTimeout(go, 50); };
+  var setU = function () { u = stage.clientWidth / W; stage.style.setProperty('--u', u + 'px'); applyScroll(false); };
+  var px = function (v) { return 'calc(var(--u) * ' + v + ')'; };
+  var place = function (el, r) { el.style.left = px(r[0]); el.style.top = px(r[1]); el.style.width = px(r[2] - r[0]); el.style.height = px(r[3] - r[1]); };
+
+  var imgs = STEPS.map(function (s) {
+    var img = document.createElement('img');
+    img.className = 'screen'; img.alt = s.alt; img.decoding = 'async'; img.width = W; img.height = s.h;
+    img.sizes = '100vw';
+    img.dataset.srcset = D.sizes[s.id].map(function (w) { return 'img/' + s.id + '-' + w + '.avif ' + w + 'w'; }).join(', ');
+    scroller.insertBefore(img, amb);
+    return img;
+  });
+  var src = function (k) { return imgs[k].currentSrc || ('img/' + STEPS[k].id + '-1920.avif'); };
+  var bgFor = function (el, k, r) {
+    el.style.backgroundImage = 'url(' + src(k) + ')';
+    el.style.backgroundSize = px(W) + ' ' + px(STEPS[k].h);
+    el.style.backgroundPosition = px(-r[0]) + ' ' + px(-r[1]);
+  };
+  var dots = STEPS.map(function (s, i) {
+    var d = document.createElement('button');
+    d.type = 'button'; d.className = 'dot'; d.setAttribute('aria-label', 'Screen ' + (i + 1) + ': ' + s.label);
+    d.addEventListener('click', function () { pause(); jump(i); });
+    dotsEl.appendChild(d);
+    return d;
+  });
+
+  var ready = STEPS.map(function () { return null; });
+  function load(i) {
+    if (!ready[i]) {
+      var img = imgs[i];
+      ready[i] = new Promise(function (res) { img.onload = img.onerror = res; img.srcset = img.dataset.srcset; })
+        .then(function () { return img.decode ? Promise.race([img.decode().catch(function () {}), new Promise(function (r) { setTimeout(r, 400); })]) : null; });
+    }
+    return ready[i];
+  }
+  (function chain(i) { if (i < STEPS.length) load(i).then(function () { chain(i + 1); }); })(0);
+
+  // taller screens scroll inside the stage (wheel, or the demo when its target is below the fold)
+  function maxScroll() { return current < 0 ? 0 : Math.max(0, STEPS[current].h - VH); }
+  function applyScroll(animate) {
+    scroller.style.transition = animate ? '' : 'none';
+    scroller.style.transform = 'translateY(' + (-scrollY * u) + 'px)';
+  }
+  stage.addEventListener('wheel', function (e) {
+    var m = maxScroll();
+    if (!m || busy) return;
+    var y = Math.max(0, Math.min(m, scrollY + e.deltaY / u));
+    if (y !== scrollY) { e.preventDefault(); scrollY = y; applyScroll(false); }
+  }, { passive: false });
+
+  function builder(layer, a, b, anims) {
+    return {
+      A: a, B: b,
+      ty: function (v) { return 'translateY(' + v * u + 'px)'; },
+      tx: function (v) { return 'translateX(' + v * u + 'px)'; },
+      fill: function (r, color) { var e = document.createElement('div'); e.className = 'fill'; place(e, r); e.style.background = color; layer.appendChild(e); return e; },
+      spr: function (k, r) { var e = document.createElement('div'); e.className = 'spr'; place(e, r); bgFor(e, k, r); layer.appendChild(e); return e; },
+      a: function (el, frames, dur, delay, easing) {
+        anims.push(el.animate(frames, { duration: still ? 1 : dur, delay: still ? 0 : (delay || 0), easing: easing || EASE, fill: 'both' }));
+      },
+    };
+  }
+
+  function showBase(k) {
+    imgs.forEach(function (img, i) { img.classList.toggle('on', i === k); });
+    imgs[k].style.height = px(STEPS[k].h);
+  }
+
+  function buildTargets(k) {
+    tgs.innerHTML = '';
+    var s = STEPS[k];
+    s.links.forEach(function (l) {
+      var demo = l.element === demoOf(s), kind = kindOf(l);
+      var e = document.createElement(kind === 'bg' ? 'div' : 'button');
+      e.className = 'tg ' + kind; place(e, l.rect);
+      e.style.borderRadius = px(kind === 'row' || kind === 'bg' ? 0 : kind === 'icon' ? 8 : 6);
+      if (kind !== 'bg') { bgFor(e, k, l.rect); e.type = 'button'; e.setAttribute('aria-label', l.element.replace(/^(Button|Nav|Row|Icon) \/ /, '').replace(/ \(hover\)$/, '')); }
+      if (demo) e.dataset.demo = '1';
+      e.addEventListener('pointerenter', function () { e.classList.add('hover'); });
+      e.addEventListener('pointerleave', function () { e.classList.remove('hover', 'press'); });
+      e.addEventListener('pointerdown', function () { e.classList.add('press'); });
+      e.addEventListener('pointerup', function () { e.classList.remove('press'); });
+      e.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        if (busy) return;
+        if (playing) pause();
+        go(INDEX[l.to], l.keep);
+      });
+      tgs.appendChild(e);
+    });
+  }
+  function hint() {
+    var h = tgs.querySelector('[data-demo]');
+    if (h) { h.classList.remove('hint'); void h.offsetWidth; h.classList.add('hint'); }
+  }
+
+  function settle(k) {
+    current = k;
+    showBase(k);
+    frame(function () { fx.innerHTML = ''; });
+    amb.innerHTML = '';
+    var s = STEPS[k];
+    s.visit = (s.visit || 0) + 1;
+    buildTargets(k);
+    dots.forEach(function (d, i) { d.classList.toggle('on', i === k); d.setAttribute('aria-current', i === k ? 'step' : 'false'); });
+    caption.innerHTML = '<b>' + (k + 1) + ' / ' + STEPS.length + ' · ' + s.part + '</b> &nbsp;' + s.label;
+    load((k + 1) % STEPS.length);
+    clearTimeout(timer);
+    if (s.demo && s.demo.auto && (playing || s.demo.always)) timer = setTimeout(function () { if (current === k && !busy) go(INDEX[s.demo.auto]); }, still ? 10 : s.demo.ms);
+    else if (playing) timer = setTimeout(demoClick, s.dwell || READ);
+  }
+
+  function jump(k) {
+    clearTimeout(timer); fx.innerHTML = ''; scrollY = 0; applyScroll(false);
+    load(k).then(function () {
+      settle(k);
+      var l = document.getElementById('loading');
+      if (l) { l.classList.add('done'); setTimeout(function () { l.remove(); }, 400); }
+    });
+  }
+
+  function go(b, keep) {
+    if (busy || b === undefined) return;
+    var a = current;
+    busy = true; clearTimeout(timer);
+    tgs.innerHTML = ''; amb.innerHTML = '';
+    var leave = !keep && scrollY > 0 ? 450 : 0;   // back to the top of a scrolled screen first (not for in-page states)
+    if (!keep) { scrollY = 0; applyScroll(true); }
+    Promise.all([load(a), load(b), new Promise(function (r) { setTimeout(r, leave); })]).then(function () {
+      var anims = [];
+      fx.innerHTML = '';
+      var t = TRANS[STEPS[a].id + '>' + STEPS[b].id] || dissolve;
+      var dur = t(builder(fx, a, b, anims));
+      setTimeout(function () { busy = false; settle(b); }, still ? 10 : dur);
+    });
+  }
+
+  // ---- the demo cursor ----------------------------------------------------------------------------
+  function hoverAt(x, y) {
+    Array.prototype.forEach.call(tgs.children, function (e) {
+      if (e.classList.contains('bg')) return;
+      var l = e.offsetLeft / u, t = e.offsetTop / u, inside = x >= l && x <= l + e.offsetWidth / u && y >= t && y <= t + e.offsetHeight / u;
+      e.classList.toggle('hover', inside);
+    });
+  }
+  function moveTo(x, y, ms, done) {
+    var x0 = cur.x, y0 = cur.y, t0 = performance.now();
+    var cx = (x0 + x) / 2 + (y - y0) * .18, cy = (y0 + y) / 2 - (x - x0) * .18;
+    (function step(now) {
+      var p = Math.min(1, (now - t0) / ms), e = p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+      var bx = (1 - e) * (1 - e) * x0 + 2 * (1 - e) * e * cx + e * e * x, by = (1 - e) * (1 - e) * y0 + 2 * (1 - e) * e * cy + e * e * y;
+      cur = { x: bx, y: by };
+      cursor.style.transform = 'translate(' + bx * u + 'px,' + by * u + 'px)';
+      hoverAt(bx, by + scrollY);
+      if (p < 1) frame(step); else done();
+    })(t0);
+  }
+  function demoClick() {
+    if (!playing || busy) return;
+    if (!visible || document.hidden) { timer = setTimeout(demoClick, 500); return; }
+    var s = STEPS[current], l = s.links.filter(function (x) { return x.element === demoOf(s); })[0];
+    if (s.demo && s.demo.auto) { go(INDEX[s.demo.auto]); return; }
+    if (!l) { pause(); return; }
+    var cy = (l.rect[1] + l.rect[3]) / 2;
+    var want = Math.max(0, Math.min(maxScroll(), cy - VH / 2));
+    if ((cy - scrollY < 90 || cy - scrollY > VH - 90) && Math.abs(want - scrollY) > 4) { scrollY = want; applyScroll(true); timer = setTimeout(demoClick, D.scrollMs); return; }
+    var a = [(l.rect[0] + l.rect[2]) / 2, cy - scrollY];
+    cursor.classList.add('on');
+    moveTo(a[0], a[1], Math.max(450, Math.min(1100, Math.hypot(a[0] - cur.x, a[1] - cur.y) * 1.1)), function () {
+      if (!playing) return;
+      timer = setTimeout(function () {
+        var t = tgs.querySelector('[data-demo]');
+        cursor.classList.add('down'); if (t) t.classList.add('press');
+        var r = document.createElement('div');
+        r.className = 'ripple'; r.style.left = px(a[0]); r.style.top = px(a[1]);
+        stage.appendChild(r); setTimeout(function () { r.remove(); }, 600);
+        timer = setTimeout(function () { cursor.classList.remove('down'); if (t) t.classList.remove('press'); go(INDEX[l.to], l.keep); }, 140);
+      }, 220);
+    });
+  }
+
+  function setPlayLabel() {
+    playBtn.innerHTML = playing
+      ? '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg><span>Pause demo</span>'
+      : '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.2v11.6c0 .6.7 1 1.2.7l9-5.8c.5-.3.5-1 0-1.3l-9-5.9C4.7 1.2 4 1.6 4 2.2z"/></svg><span>Play demo</span>';
+    playBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
+  }
+  function pause() {
+    playing = false; cursor.classList.remove('on', 'down'); setPlayLabel();
+    Array.prototype.forEach.call(tgs.children, function (e) { e.classList.remove('hover', 'press'); });
+    if (!busy) clearTimeout(timer);
+  }
+  function play() { playing = true; setPlayLabel(); if (!busy) { clearTimeout(timer); timer = setTimeout(demoClick, 300); } }
+
+  playBtn.addEventListener('click', function () { playing ? pause() : play(); });
+  document.getElementById('restart').addEventListener('click', function () { cur = { x: W * .78, y: VH * .83 }; cursor.style.transform = 'translate(' + W * .78 * u + 'px,' + VH * .83 * u + 'px)'; jump(0); });
+  stage.addEventListener('click', function () { if (playing) { pause(); return; } hint(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.target.closest && e.target.closest('button')) return;
+    if (e.key === 'ArrowRight') { pause(); go((current + 1) % STEPS.length); }
+    else if (e.key === 'ArrowLeft') { pause(); jump((current - 1 + STEPS.length) % STEPS.length); }
+    else if (e.key === ' ') { e.preventDefault(); playing ? pause() : play(); }
+  });
+  window.addEventListener('resize', function () { setU(); cursor.style.transform = 'translate(' + cur.x * u + 'px,' + cur.y * u + 'px)'; });
+  if ('IntersectionObserver' in window) new IntersectionObserver(function (e) { visible = e[0].isIntersecting; }).observe(stage);
+
+  setU();
+  setPlayLabel();
+  cursor.style.transform = 'translate(' + W * .78 * u + 'px,' + VH * .83 * u + 'px)';
+  jump(0);
+})();
+</script>
+</body>
+</html>

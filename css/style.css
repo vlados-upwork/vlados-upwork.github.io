@@ -137,3 +137,6 @@ img[data-src]:not(.project-card__image), img[data-srcset]:not(.project-card__ima
 
 /* home slider arrows sit above the active slide (its text block overlaps them) */
 .page-intro__nav-container[data-v-03af7436] { position: relative; z-index: 3; }
+
+/* client focus (#branding, #product ...): hidden for the moment site.js needs to reorder them */
+html.focusing .project-slider, html.focusing .work-section .project-list { visibility: hidden; }
