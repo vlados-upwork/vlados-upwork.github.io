@@ -148,9 +148,9 @@
   // in the home carousel, the home cards, the Work page and the Related cards of every case study. The choice is
   // kept for the tab (sessionStorage), so it stays while the client clicks around; #all goes back to normal.
   var FOCUS = {
-    product: ['eventwise', 'portaone', 'agent-lifecycle', 'dasera', 'threatnote', 'partyshare', 'ambiente', 'senna'],
-    aiproduct: ['agent-lifecycle', 'threatnote', 'scaled-website', 'brand-guide', 'whitepaper', 'dasera'],
-    mobile: ['partyshare', 'ambiente', 'senna', 'eventwise'],
+    product: ['eventwise', 'motr', 'lambda', 'portaone', 'agent-lifecycle', 'sophia', 'dasera', 'threatnote', 'partyshare', 'ambiente', 'senna'],
+    aiproduct: ['sophia', 'agent-lifecycle', 'motr', 'threatnote', 'scaled-website', 'brand-guide', 'whitepaper', 'dasera'],
+    mobile: ['motr', 'partyshare', 'sophia', 'ambiente', 'senna', 'eventwise'],
     iot: ['ambiente', 'senna'],
     landing: ['scaled-website', 'agallas', 'partyshare', 'brand-guide'],
     wordpress: ['agallas', 'scaled-website'],
@@ -160,7 +160,10 @@
     branding: ['selfsia', 'backed', 'brand-guide', 'kobiton', 'whitepaper'],
     security: ['threatnote', 'dasera'],
     fintech: ['eventwise', 'agallas', 'backed', 'portaone'],
-    designsystem: ['threatnote', 'brand-guide', 'kobiton', 'portaone']
+    healthcare: ['sophia'],
+    events: ['motr', 'eventwise', 'partyshare', 'senna'],
+    government: ['lambda'],
+    designsystem: ['motr', 'threatnote', 'brand-guide', 'kobiton', 'portaone']
   };
   var ALIAS = { b2b: 'product', saas: 'product', ux: 'product', dashboard: 'product', ai: 'aiproduct', app: 'mobile', apps: 'mobile',
     hardware: 'iot', web: 'landing', website: 'landing', websites: 'landing', marketplace: 'ecommerce', shop: 'ecommerce',
