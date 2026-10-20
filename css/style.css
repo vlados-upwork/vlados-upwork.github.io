@@ -140,3 +140,17 @@ img[data-src]:not(.project-card__image), img[data-srcset]:not(.project-card__ima
 
 /* client focus (#branding, #product ...): hidden for the moment site.js needs to reorder them */
 html.focusing .project-slider, html.focusing .work-section .project-list { visibility: hidden; }
+
+/* Work page grid (user 2026-10-20: the masonry broke with 18 projects): the first two side by side, then four per row.
+   The masonry header/body wrappers stay in the markup (site.js focus links reorder them) but no longer lay out. */
+.page--work .project-list__masonry-body .project-list__item:first-child { position: static; bottom: auto; right: auto; margin-bottom: 0; }
+.page--work .project-list__masonry-header .project-list__card, .page--work .project-list__masonry-header .project-list__card--middle { margin-top: 0; }
+@media (min-width: 768px) {
+  .page--work .project-list__masonry { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: calc(var(--grid-gutter-x) * 2); row-gap: 56px; }
+  .page--work .project-list__masonry-header, .page--work .project-list__masonry-body { display: contents; }
+  .page--work .project-list__masonry-body { margin-top: 0; }
+}
+@media (min-width: 992px) {
+  .page--work .project-list__masonry { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 64px; }
+  .page--work .project-list__masonry-header > .project-list__item:nth-child(-n+2) { grid-column: span 2; }
+}
