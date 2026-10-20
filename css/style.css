@@ -149,8 +149,15 @@ html.focusing .project-slider, html.focusing .work-section .project-list { visib
   .page--work .project-list__masonry { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: calc(var(--grid-gutter-x) * 2); row-gap: 56px; }
   .page--work .project-list__masonry-header, .page--work .project-list__masonry-body { display: contents; }
   .page--work .project-list__masonry-body { margin-top: 0; }
+  .page--work .project-list__masonry .project-list__item { width: 100%; min-width: 0; padding-left: 0; padding-right: 0; }
+  .page--work .project-list__masonry .project-list__card { display: block; width: 100%; }
 }
 @media (min-width: 992px) {
   .page--work .project-list__masonry { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 64px; }
   .page--work .project-list__masonry-header > .project-list__item:nth-child(-n+2) { grid-column: span 2; }
+  /* the four-per-row cards: title above its description, never cut off */
+  .page--work .project-list__masonry-header > .project-list__item:nth-child(n+3) :is(.project-card__title, .project-card__description),
+  .page--work .project-list__masonry-body .project-list__item :is(.project-card__title, .project-card__description) { flex: 0 0 100%; width: 100%; max-width: 100%; }
+  .page--work .project-list__masonry-header > .project-list__item:nth-child(n+3) .project-card__description,
+  .page--work .project-list__masonry-body .project-list__item .project-card__description { overflow: visible; -webkit-line-clamp: unset; display: block; margin-top: 4px; min-height: 0; }
 }
