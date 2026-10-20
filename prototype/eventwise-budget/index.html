@@ -356,5 +356,5 @@
   jump(0);
 })();
 </script>
-</body>
+<script>(function () { function upd() { var st = document.querySelector(".stage"); var w = Math.round(st ? st.getBoundingClientRect().width : innerWidth); if (!w) return; var v = w + "px"; document.querySelectorAll("img").forEach(function (i) { if (i.getAttribute("sizes") !== v) i.setAttribute("sizes", v); }); } addEventListener("resize", upd); addEventListener("load", upd); [0, 300, 1200, 3000].forEach(function (t) { setTimeout(upd, t); }); if (window.ResizeObserver) new ResizeObserver(upd).observe(document.documentElement); })();</script></body>
 </html>
