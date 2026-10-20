@@ -141,7 +141,7 @@ img[data-src]:not(.project-card__image), img[data-srcset]:not(.project-card__ima
 /* client focus (#branding, #product ...): hidden for the moment site.js needs to reorder them */
 html.focusing .project-slider, html.focusing .work-section .project-list { visibility: hidden; }
 
-/* Work page grid (user 2026-10-20: the masonry broke with 18 projects): the first two side by side, then four per row.
+/* Work page grid (user 2026-10-20: the masonry broke with 18 projects): the first six large, two per row, then four per row.
    The masonry header/body wrappers stay in the markup (site.js focus links reorder them) but no longer lay out. */
 .page--work .project-list__masonry-body .project-list__item:first-child { position: static; bottom: auto; right: auto; margin-bottom: 0; }
 .page--work .project-list__masonry-header .project-list__card, .page--work .project-list__masonry-header .project-list__card--middle { margin-top: 0; }
@@ -154,10 +154,10 @@ html.focusing .project-slider, html.focusing .work-section .project-list { visib
 }
 @media (min-width: 992px) {
   .page--work .project-list__masonry { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 64px; }
-  .page--work .project-list__masonry-header > .project-list__item:nth-child(-n+2) { grid-column: span 2; }
+  .page--work .project-list__masonry-header > .project-list__item:nth-child(-n+6) { grid-column: span 2; }
   /* the four-per-row cards: title above its description, never cut off */
-  .page--work .project-list__masonry-header > .project-list__item:nth-child(n+3) :is(.project-card__title, .project-card__description),
+  .page--work .project-list__masonry-header > .project-list__item:nth-child(n+7) :is(.project-card__title, .project-card__description),
   .page--work .project-list__masonry-body .project-list__item :is(.project-card__title, .project-card__description) { flex: 0 0 100%; width: 100%; max-width: 100%; }
-  .page--work .project-list__masonry-header > .project-list__item:nth-child(n+3) .project-card__description,
+  .page--work .project-list__masonry-header > .project-list__item:nth-child(n+7) .project-card__description,
   .page--work .project-list__masonry-body .project-list__item .project-card__description { overflow: visible; -webkit-line-clamp: unset; display: block; margin-top: 4px; min-height: 0; }
 }
