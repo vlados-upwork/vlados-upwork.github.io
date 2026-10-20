@@ -156,7 +156,7 @@
     wordpress: ['agallas', 'scaled-website'],
     webflow: ['scaled-website', 'agallas'],
     ecommerce: ['partyshare', 'agallas', 'scaled-website', 'eventwise'],
-    print: ['whitepaper', 'kobiton', 'brand-guide', 'backed', 'selfsia'],
+    print: ['print', 'whitepaper', 'kobiton', 'brand-guide', 'backed', 'selfsia'],
     branding: ['selfsia', 'backed', 'brand-guide', 'kobiton', 'whitepaper'],
     security: ['threatnote', 'dasera'],
     fintech: ['eventwise', 'agallas', 'backed', 'portaone'],
