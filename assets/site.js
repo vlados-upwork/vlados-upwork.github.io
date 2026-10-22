@@ -156,12 +156,12 @@
     wordpress: ['agallas', 'scaled-website'],
     webflow: ['scaled-website', 'agallas'],
     ecommerce: ['partyshare', 'agallas', 'scaled-website', 'eventwise'],
-    print: ['print', 'whitepaper', 'kobiton', 'brand-guide', 'backed', 'selfsia'],
-    branding: ['selfsia', 'backed', 'brand-guide', 'kobiton', 'whitepaper'],
+    print: ['print', 'backed-partnership', 'whitepaper', 'kobiton', 'brand-guide', 'backed', 'selfsia'],
+    branding: ['selfsia', 'backed', 'backed-partnership', 'brand-guide', 'kobiton', 'whitepaper'],
     security: ['threatnote', 'dasera'],
-    fintech: ['eventwise', 'agallas', 'backed', 'portaone'],
+    fintech: ['eventwise', 'agallas', 'backed', 'backed-partnership', 'portaone'],
     healthcare: ['sophia'],
-    events: ['motr', 'eventwise', 'partyshare', 'senna'],
+    events: ['motr', 'eventwise', 'partyshare', 'backed-partnership', 'senna'],
     government: ['lambda'],
     designsystem: ['motr', 'threatnote', 'brand-guide', 'kobiton', 'portaone']
   };
